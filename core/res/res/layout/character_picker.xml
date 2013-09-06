@@ -18,7 +18,7 @@
     android:orientation="horizontal"
     android:layout_width="304dp"
     android:layout_height="match_parent"
-    android:background="@drawable/keyboard_background">
+    android:background="@drawable/keyboard_popup_panel_trans_background">
 
     <GridView
         android:id="@+id/characterPicker"
