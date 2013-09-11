@@ -25,13 +25,16 @@ import android.app.IProfileManager;
 import android.app.NotificationGroup;
 import android.app.Profile;
 import android.app.ProfileGroup;
-import android.app.ProfileManager;
 import android.app.backup.BackupManager;
+import android.bluetooth.BluetoothDevice;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.res.XmlResourceParser;
+import android.net.wifi.WifiManager;
+import android.net.wifi.WifiSsid;
+import android.net.wifi.WifiInfo;
 import android.os.Environment;
 import android.os.RemoteException;
 import android.os.UserHandle;
@@ -39,7 +42,6 @@ import android.text.TextUtils;
 import android.util.Log;
 import android.os.ParcelUuid;
 
-import java.util.Collection;
 import java.io.File;
 import java.io.FileReader;
 import java.io.FileWriter;
@@ -51,14 +53,30 @@ import java.util.UUID;
 
 /** {@hide} */
 public class ProfileManagerService extends IProfileManager.Stub {
-    private static final String TAG = "ProfileService";
     // Enable the below for detailed logging of this class
     private static final boolean LOCAL_LOGV = false;
+    /**
+     * <p>Broadcast Action: A new profile has been selected. This can be triggered by the user
+     * or by calls to the ProfileManagerService / Profile.</p>
+     * @hide
+     */
+    public static final String INTENT_ACTION_PROFILE_SELECTED = "android.intent.action.PROFILE_SELECTED";
+
+    /**
+    * <p>Broadcast Action: Current profile has been updated. This is triggered every time the
+    * currently active profile is updated, instead of selected.</p>
+    * <p> For instance, this includes profile updates caused by a locale change, which doesn't
+    * trigger a profile selection, but causes its name to change.</p>
+    * @hide
+    */
+    public static final String INTENT_ACTION_PROFILE_UPDATED = "android.intent.action.PROFILE_UPDATED";
 
     public static final String PERMISSION_CHANGE_SETTINGS = "android.permission.WRITE_SETTINGS";
 
     /* package */ static final File PROFILE_FILE =
             new File(Environment.getSystemSecureDirectory(), "profiles.xml");
+
+    private static final String TAG = "ProfileService";
 
     private Map<UUID, Profile> mProfiles;
 
@@ -70,14 +88,14 @@ public class ProfileManagerService extends IProfileManager.Stub {
     private Profile mActiveProfile;
 
     // Well-known UUID of the wildcard group
-    private static final UUID mWildcardUUID =
-            UUID.fromString("a126d48a-aaef-47c4-baed-7f0e44aeffe5");
+    private static final UUID mWildcardUUID = UUID.fromString("a126d48a-aaef-47c4-baed-7f0e44aeffe5");
     private NotificationGroup mWildcardGroup;
 
     private Context mContext;
     private boolean mDirty;
     private BackupManager mBackupManager;
-    private ProfileTriggerHelper mTriggerHelper;
+    private WifiManager mWifiManager;
+    private String mLastConnectedSSID;
 
     private BroadcastReceiver mIntentReceiver = new BroadcastReceiver() {
         @Override
@@ -88,6 +106,40 @@ public class ProfileManagerService extends IProfileManager.Stub {
                 initialize();
             } else if (action.equals(Intent.ACTION_SHUTDOWN)) {
                 persistIfDirty();
+
+            } else if (action.equals(WifiManager.NETWORK_STATE_CHANGED_ACTION)) {
+                String activeSSID = getActiveSSID();
+                int triggerState;
+                if (activeSSID != null) {
+                    triggerState = Profile.TriggerState.ON_CONNECT;
+                    mLastConnectedSSID = activeSSID;
+                } else {
+                    triggerState = Profile.TriggerState.ON_DISCONNECT;
+                }
+                checkTriggers(Profile.TriggerType.WIFI, mLastConnectedSSID, triggerState);
+            } else if (action.equals(BluetoothDevice.ACTION_ACL_CONNECTED)
+                    || action.equals(BluetoothDevice.ACTION_ACL_DISCONNECTED)) {
+                int triggerState = action.equals(BluetoothDevice.ACTION_ACL_CONNECTED)
+                        ? Profile.TriggerState.ON_CONNECT : Profile.TriggerState.ON_DISCONNECT;
+                BluetoothDevice device = intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE);
+
+                checkTriggers(Profile.TriggerType.BLUETOOTH, device.getAddress(), triggerState);
+            }
+        }
+
+        private void checkTriggers(int type, String id, int newState) {
+            for (Profile p : mProfiles.values()) {
+                if (newState != p.getTrigger(type, id)) {
+                    continue;
+                }
+
+                try {
+                    if (!mActiveProfile.getUuid().equals(p.getUuid())) {
+                        setActiveProfile(p, true);
+                    }
+                } catch (RemoteException e) {
+                    Log.e(TAG, "Could not update profile on trigger", e);
+                }
             }
         }
     };
@@ -95,7 +147,8 @@ public class ProfileManagerService extends IProfileManager.Stub {
     public ProfileManagerService(Context context) {
         mContext = context;
         mBackupManager = new BackupManager(mContext);
-        mTriggerHelper = new ProfileTriggerHelper(mContext, this);
+        mWifiManager = (WifiManager) mContext.getSystemService(Context.WIFI_SERVICE);
+        mLastConnectedSSID = getActiveSSID();
 
         mWildcardGroup = new NotificationGroup(
                 context.getString(com.android.internal.R.string.wildcardProfile),
@@ -107,6 +160,9 @@ public class ProfileManagerService extends IProfileManager.Stub {
         IntentFilter filter = new IntentFilter();
         filter.addAction(Intent.ACTION_LOCALE_CHANGED);
         filter.addAction(Intent.ACTION_SHUTDOWN);
+        filter.addAction(WifiManager.NETWORK_STATE_CHANGED_ACTION);
+        filter.addAction(BluetoothDevice.ACTION_ACL_CONNECTED);
+        filter.addAction(BluetoothDevice.ACTION_ACL_DISCONNECTED);
         mContext.registerReceiver(mIntentReceiver, filter);
     }
 
@@ -125,6 +181,8 @@ public class ProfileManagerService extends IProfileManager.Stub {
         if (!skipFile) {
             try {
                 loadFromFile();
+            } catch (RemoteException e) {
+                e.printStackTrace();
             } catch (XmlPullParserException e) {
                 init = true;
             } catch (IOException e) {
@@ -141,6 +199,18 @@ public class ProfileManagerService extends IProfileManager.Stub {
         }
     }
 
+    private String getActiveSSID() {
+        WifiInfo wifiinfo = mWifiManager.getConnectionInfo();
+        if (wifiinfo == null) {
+            return null;
+        }
+        WifiSsid ssid = wifiinfo.getWifiSsid();
+        if (ssid == null) {
+            return null;
+        }
+        return ssid.toString();
+    }
+
     @Override
     public void resetAll() {
         enforceChangePermissions();
@@ -149,38 +219,40 @@ public class ProfileManagerService extends IProfileManager.Stub {
 
     @Override
     @Deprecated
-    public boolean setActiveProfileByName(String profileName) {
-        if (!mProfileNames.containsKey(profileName)) {
+    public boolean setActiveProfileByName(String profileName) throws RemoteException, SecurityException {
+        if (mProfileNames.containsKey(profileName)) {
+            if (LOCAL_LOGV) Log.v(TAG, "setActiveProfile(String) found profile name in mProfileNames.");
+            return setActiveProfile(mProfiles.get(mProfileNames.get(profileName)), true);
+        } else {
             // Since profileName could not be casted into a UUID, we can call it a string.
             Log.w(TAG, "Unable to find profile to set active, based on string: " + profileName);
             return false;
         }
-
-        if (LOCAL_LOGV) {
-            Log.v(TAG, "setActiveProfile(String) found profile name in mProfileNames.");
-        }
-        setActiveProfile(mProfiles.get(mProfileNames.get(profileName)), true);
-        return true;
     }
 
     @Override
-    public boolean setActiveProfile(ParcelUuid profileParcelUuid) {
-        return setActiveProfile(profileParcelUuid.getUuid(), true);
-    }
-
-    private boolean setActiveProfile(UUID profileUuid, boolean doInit) {
-        if (!mProfiles.containsKey(profileUuid)) {
-            Log.e(TAG, "Cannot set active profile to: "
-                    + profileUuid.toString() + " - does not exist.");
+    public boolean setActiveProfile(ParcelUuid profileParcelUuid) throws RemoteException, SecurityException {
+        UUID profileUuid = profileParcelUuid.getUuid();
+        if(mProfiles.containsKey(profileUuid)){
+            if (LOCAL_LOGV) Log.v(TAG, "setActiveProfileByUuid(ParcelUuid) found profile UUID in mProfileNames.");
+            return setActiveProfile(mProfiles.get(profileUuid), true);
+        } else {
+            Log.e(TAG, "Cannot set active profile to: " + profileUuid.toString() + " - does not exist.");
             return false;
         }
-
-        if (LOCAL_LOGV) Log.v(TAG, "setActiveProfile(UUID, boolean) found UUID in mProfiles.");
-        setActiveProfile(mProfiles.get(profileUuid), doInit);
-        return true;
     }
 
-    /* package */ void setActiveProfile(Profile newActiveProfile, boolean doInit) {
+    private boolean setActiveProfile(UUID profileUuid, boolean doinit) throws RemoteException {
+        if(mProfiles.containsKey(profileUuid)){
+            if (LOCAL_LOGV) Log.v(TAG, "setActiveProfile(UUID, boolean) found profile UUID in mProfiles.");
+            return setActiveProfile(mProfiles.get(profileUuid), doinit);
+        } else {
+            Log.e(TAG, "Cannot set active profile to: " + profileUuid.toString() + " - does not exist.");
+            return false;
+        }
+    }
+
+    private boolean setActiveProfile(Profile newActiveProfile, boolean doinit) throws RemoteException {
         /*
          * NOTE: Since this is not a public function, and all public functions
          * take either a string or a UUID, the active profile should always be
@@ -189,59 +261,54 @@ public class ProfileManagerService extends IProfileManager.Stub {
          * list, and THEN add it.
          */
 
-        enforceChangePermissions();
+        try {
+            enforceChangePermissions();
+            Log.d(TAG, "Set active profile to: " + newActiveProfile.getUuid().toString() + " - " + newActiveProfile.getName());
+            Profile lastProfile = mActiveProfile;
+            mActiveProfile = newActiveProfile;
+            mDirty = true;
+            if (doinit) {
+                if (LOCAL_LOGV) Log.v(TAG, "setActiveProfile(Profile, boolean) - Running init");
 
-        Log.d(TAG, "Set active profile to: " + newActiveProfile.getUuid().toString()
-                + " - " + newActiveProfile.getName());
+                /*
+                 * We need to clear the caller's identity in order to
+                 * - allow the profile switch to execute actions not included in the caller's permissions
+                 * - broadcast INTENT_ACTION_PROFILE_SELECTED
+                 */
+                long token = clearCallingIdentity();
 
-        Profile lastProfile = mActiveProfile;
-        mActiveProfile = newActiveProfile;
-        mDirty = true;
+                // Call profile's "doSelect"
+                mActiveProfile.doSelect(mContext);
 
-        if (doInit) {
-            if (LOCAL_LOGV) Log.v(TAG, "setActiveProfile(Profile, boolean) - Running init");
+                // Notify other applications of newly selected profile.
+                Intent broadcast = new Intent(INTENT_ACTION_PROFILE_SELECTED);
+                broadcast.putExtra("name", mActiveProfile.getName());
+                broadcast.putExtra("uuid", mActiveProfile.getUuid().toString());
+                broadcast.putExtra("lastName", lastProfile.getName());
+                broadcast.putExtra("lastUuid", lastProfile.getUuid().toString());
+                mContext.sendBroadcastAsUser(broadcast, UserHandle.ALL);
 
-            /*
-             * We need to clear the caller's identity in order to
-             * - allow the profile switch to execute actions
-             *   not included in the caller's permissions
-             * - broadcast INTENT_ACTION_PROFILE_SELECTED
-             */
-            long token = clearCallingIdentity();
-
-            // Call profile's "doSelect"
-            mActiveProfile.doSelect(mContext);
-
-            // Notify other applications of newly selected profile.
-            Intent broadcast = new Intent(ProfileManager.INTENT_ACTION_PROFILE_SELECTED);
-            broadcast.putExtra(ProfileManager.EXTRA_PROFILE_NAME,
-                    mActiveProfile.getName());
-            broadcast.putExtra(ProfileManager.EXTRA_PROFILE_UUID,
-                    mActiveProfile.getUuid().toString());
-            broadcast.putExtra(ProfileManager.EXTRA_LAST_PROFILE_NAME,
-                    lastProfile.getName());
-            broadcast.putExtra(ProfileManager.EXTRA_LAST_PROFILE_UUID,
-                    lastProfile.getUuid().toString());
-
-            mContext.sendBroadcastAsUser(broadcast, UserHandle.ALL);
-
-            restoreCallingIdentity(token);
-            persistIfDirty();
-        } else if (lastProfile != mActiveProfile && ActivityManagerNative.isSystemReady()) {
-            // Something definitely changed: notify.
-            long token = clearCallingIdentity();
-            Intent broadcast = new Intent(ProfileManager.INTENT_ACTION_PROFILE_UPDATED);
-            broadcast.putExtra(ProfileManager.EXTRA_PROFILE_NAME,
-                    mActiveProfile.getName());
-            broadcast.putExtra(ProfileManager.EXTRA_PROFILE_UUID,
-                    mActiveProfile.getUuid().toString());
-            mContext.sendBroadcastAsUser(broadcast, UserHandle.ALL);
-            restoreCallingIdentity(token);
+                restoreCallingIdentity(token);
+                persistIfDirty();
+            } else if (lastProfile != mActiveProfile &&
+                    ActivityManagerNative.isSystemReady()) {
+                // Something definitely changed: notify.
+                long token = clearCallingIdentity();
+                Intent broadcast = new Intent(INTENT_ACTION_PROFILE_UPDATED);
+                broadcast.putExtra("name", mActiveProfile.getName());
+                broadcast.putExtra("uuid", mActiveProfile.getUuid().toString());
+                mContext.sendBroadcastAsUser(broadcast, UserHandle.ALL);
+                restoreCallingIdentity(token);
+            }
+            return true;
+        } catch (Exception ex) {
+            ex.printStackTrace();
+            return false;
         }
     }
 
     @Override
-    public boolean addProfile(Profile profile) {
+    public boolean addProfile(Profile profile) throws RemoteException, SecurityException {
         enforceChangePermissions();
         addProfileInternal(profile);
         persistIfDirty();
@@ -259,8 +326,7 @@ public class ProfileManagerService extends IProfileManager.Stub {
         mDirty = true;
     }
 
-    private void ensureGroupInProfile(Profile profile,
-            NotificationGroup group, boolean defaultGroup) {
+    private void ensureGroupInProfile(Profile profile, NotificationGroup group, boolean defaultGroup) {
         if (profile.getProfileGroup(group.getUuid()) != null) {
             return;
         }
@@ -279,7 +345,7 @@ public class ProfileManagerService extends IProfileManager.Stub {
 
     @Override
     @Deprecated
-    public Profile getProfileByName(String profileName) {
+    public Profile getProfileByName(String profileName) throws RemoteException {
         if (mProfileNames.containsKey(profileName)) {
             return mProfiles.get(mProfileNames.get(profileName));
         } else if (mProfiles.containsKey(UUID.fromString((profileName)))) {
@@ -295,7 +361,7 @@ public class ProfileManagerService extends IProfileManager.Stub {
         return getProfile(profileUuid);
     }
 
-    private Profile getProfile(UUID profileUuid) {
+    public Profile getProfile(UUID profileUuid) {
         // use primary UUID first
         if (mProfiles.containsKey(profileUuid)) {
             return mProfiles.get(profileUuid);
@@ -312,65 +378,56 @@ public class ProfileManagerService extends IProfileManager.Stub {
         return null;
     }
 
-    /* package */ Collection<Profile> getProfileList() {
-        return mProfiles.values();
+    @Override
+    public Profile[] getProfiles() throws RemoteException {
+        Profile[] tmpArr = mProfiles.values().toArray(new Profile[mProfiles.size()]);
+        Arrays.sort(tmpArr);
+        return tmpArr;
     }
 
     @Override
-    public Profile[] getProfiles() {
-        Profile[] profiles = getProfileList().toArray(new Profile[mProfiles.size()]);
-        Arrays.sort(profiles);
-        return profiles;
-    }
-
-    @Override
-    public Profile getActiveProfile() {
+    public Profile getActiveProfile() throws RemoteException {
         return mActiveProfile;
     }
 
     @Override
-    public boolean removeProfile(Profile profile) {
+    public boolean removeProfile(Profile profile) throws RemoteException, SecurityException {
         enforceChangePermissions();
-        if (mProfileNames.remove(profile.getName()) != null
-                && mProfiles.remove(profile.getUuid()) != null) {
+        if (mProfileNames.remove(profile.getName()) != null && mProfiles.remove(profile.getUuid()) != null) {
             mDirty = true;
             persistIfDirty();
             return true;
-        } else {
+        } else{
             return false;
         }
     }
 
     @Override
-    public void updateProfile(Profile profile) {
+    public void updateProfile(Profile profile) throws RemoteException, SecurityException {
         enforceChangePermissions();
         Profile old = mProfiles.get(profile.getUuid());
+        if (old != null) {
+            mProfileNames.remove(old.getName());
+            mProfileNames.put(profile.getName(), profile.getUuid());
+            mProfiles.put(profile.getUuid(), profile);
+            /* no need to set mDirty, if the profile was actually changed,
+             * it's marked as dirty by itself */
+            persistIfDirty();
 
-        if (old == null) {
-            return;
-        }
-
-        mProfileNames.remove(old.getName());
-        mProfileNames.put(profile.getName(), profile.getUuid());
-        mProfiles.put(profile.getUuid(), profile);
-        /* no need to set mDirty, if the profile was actually changed,
-         * it's marked as dirty by itself */
-        persistIfDirty();
-
-        // Also update if we changed the active profile
-        if (mActiveProfile != null && mActiveProfile.getUuid().equals(profile.getUuid())) {
-            setActiveProfile(profile, true);
+            // Also update we changed the active profile
+            if (mActiveProfile != null && mActiveProfile.getUuid().equals(profile.getUuid())) {
+                setActiveProfile(profile, true);
+            }
         }
     }
 
     @Override
-    public boolean profileExists(ParcelUuid profileUuid) {
+    public boolean profileExists(ParcelUuid profileUuid) throws RemoteException {
         return mProfiles.containsKey(profileUuid.getUuid());
     }
 
     @Override
-    @Deprecated
-    public boolean profileExistsByName(String profileName) {
+    public boolean profileExistsByName(String profileName) throws RemoteException {
         for (Map.Entry<String, UUID> entry : mProfileNames.entrySet()) {
             if (entry.getKey().equalsIgnoreCase(profileName)) {
                 return true;
@@ -380,8 +437,7 @@ public class ProfileManagerService extends IProfileManager.Stub {
     }
 
     @Override
-    @Deprecated
-    public boolean notificationGroupExistsByName(String notificationGroupName) {
+    public boolean notificationGroupExistsByName(String notificationGroupName) throws RemoteException {
         for (NotificationGroup group : mGroups.values()) {
             if (group.getName().equalsIgnoreCase(notificationGroupName)) {
                 return true;
@@ -391,12 +447,12 @@ public class ProfileManagerService extends IProfileManager.Stub {
     }
 
     @Override
-    public NotificationGroup[] getNotificationGroups() {
+    public NotificationGroup[] getNotificationGroups() throws RemoteException {
         return mGroups.values().toArray(new NotificationGroup[mGroups.size()]);
     }
 
     @Override
-    public void addNotificationGroup(NotificationGroup group) {
+    public void addNotificationGroup(NotificationGroup group) throws RemoteException, SecurityException {
         enforceChangePermissions();
         addNotificationGroupInternal(group);
         persistIfDirty();
@@ -414,9 +470,9 @@ public class ProfileManagerService extends IProfileManager.Stub {
     }
 
     @Override
-    public void removeNotificationGroup(NotificationGroup group) {
+    public void removeNotificationGroup(NotificationGroup group) throws RemoteException, SecurityException {
         enforceChangePermissions();
-        mDirty |= mGroups.remove(group.getUuid()) != null;
+        mDirty |= (mGroups.remove(group.getUuid()) != null);
         // Remove the corresponding ProfileGroup from all the profiles too if
         // they use it.
         for (Profile profile : mProfiles.values()) {
@@ -426,21 +482,19 @@ public class ProfileManagerService extends IProfileManager.Stub {
     }
 
     @Override
-    public void updateNotificationGroup(NotificationGroup group) {
+    public void updateNotificationGroup(NotificationGroup group) throws RemoteException, SecurityException {
         enforceChangePermissions();
         NotificationGroup old = mGroups.get(group.getUuid());
-        if (old == null) {
-            return;
+        if (old != null) {
+            mGroups.put(group.getUuid(), group);
+            /* no need to set mDirty, if the group was actually changed,
+             * it's marked as dirty by itself */
+            persistIfDirty();
         }
-
-        mGroups.put(group.getUuid(), group);
-        /* no need to set mDirty, if the group was actually changed,
-         * it's marked as dirty by itself */
-        persistIfDirty();
     }
 
     @Override
-    public NotificationGroup getNotificationGroupForPackage(String pkg) {
+    public NotificationGroup getNotificationGroupForPackage(String pkg) throws RemoteException {
         for (NotificationGroup group : mGroups.values()) {
             if (group.hasPackage(pkg)) {
                 return group;
@@ -458,7 +512,7 @@ public class ProfileManagerService extends IProfileManager.Stub {
         persistIfDirty();
     }
 
-    private void loadFromFile() throws XmlPullParserException, IOException {
+    private void loadFromFile() throws RemoteException, XmlPullParserException, IOException {
         XmlPullParserFactory xppf = XmlPullParserFactory.newInstance();
         XmlPullParser xpp = xppf.newPullParser();
         FileReader fr = new FileReader(PROFILE_FILE);
@@ -469,7 +523,7 @@ public class ProfileManagerService extends IProfileManager.Stub {
     }
 
     private void loadXml(XmlPullParser xpp, Context context) throws
-            XmlPullParserException, IOException {
+            XmlPullParserException, IOException, RemoteException {
         int event = xpp.next();
         String active = null;
         while (event != XmlPullParser.END_TAG || !"profiles".equals(xpp.getName())) {
@@ -512,7 +566,7 @@ public class ProfileManagerService extends IProfileManager.Stub {
         }
     }
 
-    private void initialiseStructure() throws XmlPullParserException, IOException {
+    private void initialiseStructure() throws RemoteException, XmlPullParserException, IOException {
         XmlResourceParser xml = mContext.getResources().getXml(
                 com.android.internal.R.xml.profile_default);
         try {
@@ -524,7 +578,7 @@ public class ProfileManagerService extends IProfileManager.Stub {
         }
     }
 
-    private String getXmlString() {
+    private String getXmlString() throws RemoteException {
         StringBuilder builder = new StringBuilder();
         builder.append("<profiles>\n<active>");
         builder.append(TextUtils.htmlEncode(getActiveProfile().getUuid().toString()));
@@ -541,7 +595,7 @@ public class ProfileManagerService extends IProfileManager.Stub {
     }
 
     @Override
-    public NotificationGroup getNotificationGroup(ParcelUuid uuid) {
+    public NotificationGroup getNotificationGroup(ParcelUuid uuid) throws RemoteException {
         if (uuid.getUuid().equals(mWildcardGroup.getUuid())) {
             return mWildcardGroup;
         }
@@ -584,7 +638,7 @@ public class ProfileManagerService extends IProfileManager.Stub {
         }
     }
 
-    private void enforceChangePermissions() {
+    private void enforceChangePermissions() throws SecurityException {
         mContext.enforceCallingOrSelfPermission(PERMISSION_CHANGE_SETTINGS,
                 "You do not have permissions to change the Profile Manager.");
     }
