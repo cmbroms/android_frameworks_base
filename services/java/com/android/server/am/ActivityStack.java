@@ -1680,10 +1680,10 @@ final class ActivityStack {
             if (mNoAnimActivities.contains(next)) {
                 noAnim = true;
                 mService.mWindowManager.prepareAppTransition(
-                        WindowManagerPolicy.TRANSIT_NONE, false);
+                        AppTransition.TRANSIT_NONE, false);
             } else {
                 mService.mWindowManager.prepareAppTransition(
-                        WindowManagerPolicy.TRANSIT_ACTIVITY_OPEN, false);
+                        AppTransition.TRANSIT_ACTIVITY_OPEN, false);
             }
         }
         if (!noAnim) {
