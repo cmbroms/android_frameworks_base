@@ -2176,6 +2176,17 @@ public final class ActivityThread {
         return mActivities.get(token).activity;
     }
 
+    protected void performFinishFloating() {
+        synchronized (mPackages) {
+            for (ActivityClientRecord ar : mActivities.values()) {
+                Activity a = ar.activity;
+                if (a != null && !a.mFinished && a.getWindow() != null && a.getWindow().mIsFloatingWindow) {
+                    a.finish();
+                }
+            }
+        }
+    }
+
     public final void sendActivityResult(
             IBinder token, String id, int requestCode,
             int resultCode, Intent data) {
@@ -2905,6 +2916,7 @@ public final class ActivityThread {
                     deliverResults(r, r.pendingResults);
                     r.pendingResults = null;
                 }
+
                 r.activity.performResume();
 
                 EventLog.writeEvent(LOG_ON_RESUME_CALLED,
@@ -2914,12 +2926,7 @@ public final class ActivityThread {
                 r.stopped = false;
                 r.state = null;
             } catch (Exception e) {
-                if (!mInstrumentation.onException(r.activity, e)) {
-                    throw new RuntimeException(
-                        "Unable to resume activity "
-                        + r.intent.getComponent().toShortString()
-                        + ": " + e.toString(), e);
-                }
+                // Unable to resume activity
             }
         }
         return r;
@@ -3090,7 +3097,7 @@ public final class ActivityThread {
                 if (cv == null) {
                     mThumbnailCanvas = cv = new Canvas();
                 }
-    
+
                 cv.setBitmap(thumbnail);
                 if (!r.activity.onCreateThumbnail(thumbnail, cv)) {
                     mAvailThumbnailBitmap = thumbnail;
@@ -3330,6 +3337,7 @@ public final class ActivityThread {
 
     private void updateVisibility(ActivityClientRecord r, boolean show) {
         View v = r.activity.mDecor;
+
         if (v != null) {
             if (show) {
                 if (!r.activity.mVisibleFromServer) {
@@ -3394,12 +3402,12 @@ public final class ActivityThread {
 
     private void handleWindowVisibility(IBinder token, boolean show) {
         ActivityClientRecord r = mActivities.get(token);
-        
+
         if (r == null) {
             Log.w(TAG, "handleWindowVisibility: no activity for token " + token);
             return;
         }
-        
+
         if (!show && !r.stopped) {
             performStopActivityInner(r, null, show, false);
         } else if (show && r.stopped) {
@@ -3809,10 +3817,10 @@ public final class ActivityThread {
                 }
             }
         }
-        
+
         if (DEBUG_CONFIGURATION) Slog.v(TAG, "Relaunching activity "
                 + tmp.token + ": changedConfig=" + changedConfig);
-        
+
         // If there was a pending configuration change, execute it first.
         if (changedConfig != null) {
             mCurDefaultDisplayDpi = changedConfig.densityDpi;
@@ -4076,7 +4084,7 @@ public final class ActivityThread {
                 it.remove();
             }
         }
-        
+
         return changes;
     }
 
@@ -4134,12 +4142,12 @@ public final class ActivityThread {
             if (config == null) {
                 return;
             }
-            
+
             if (DEBUG_CONFIGURATION) Slog.v(TAG, "Handle configuration changed: "
                     + config);
-        
+
             diff = applyConfigurationToResourcesLocked(config, compat);
-            
+
             if (mConfiguration == null) {
                 mConfiguration = new Configuration();
             }
@@ -4198,7 +4206,7 @@ public final class ActivityThread {
 
         if (DEBUG_CONFIGURATION) Slog.v(TAG, "Handle activity config changed: "
                 + r.activityInfo.name);
-        
+
         performConfigurationChanged(r.activity, mCompatConfiguration);
 
         freeTextLayoutCachesIfNeeded(r.activity.mCurrentConfig.diff(mCompatConfiguration));
@@ -4208,7 +4216,7 @@ public final class ActivityThread {
         if (start) {
             try {
                 switch (profileType) {
-                    default:                        
+                    default:
                         mProfiler.setProfiler(pcd.path, pcd.fd);
                         mProfiler.autoStopProfiler = false;
                         mProfiler.startProfiling();
@@ -4276,7 +4284,7 @@ public final class ActivityThread {
         ApplicationPackageManager.handlePackageBroadcast(cmd, packages,
                 hasPkgInfo);
     }
-        
+
     final void handleLowMemory() {
         ArrayList<ComponentCallbacks2> callbacks = collectComponentCallbacks(true, null);
 
@@ -4456,7 +4464,7 @@ public final class ActivityThread {
             if (cacheDir != null) {
                 // Provide a usable directory for temporary files
                 System.setProperty("java.io.tmpdir", cacheDir.getAbsolutePath());
-    
+
                 setupGraphicsSupport(data.info, cacheDir);
             } else {
                 Log.e(TAG, "Unable to setupGraphicsSupport due to missing cache directory");
