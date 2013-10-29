@@ -67,6 +67,7 @@
   <java-symbol type="id" name="deny_button" />
   <java-symbol type="id" name="description" />
   <java-symbol type="id" name="divider" />
+  <java-symbol type="id" name="drawer_layout" />
   <java-symbol type="id" name="edit_query" />
   <java-symbol type="id" name="edittext_container" />
   <java-symbol type="id" name="enter_pin_section" />
@@ -170,6 +171,7 @@
   <java-symbol type="id" name="switch_old" />
   <java-symbol type="id" name="switchWidget" />
   <java-symbol type="id" name="text" />
+  <java-symbol type="id" name="label" />
   <java-symbol type="id" name="time" />
   <java-symbol type="id" name="time_current" />
   <java-symbol type="id" name="titleDivider" />
@@ -219,6 +221,13 @@
   <java-symbol type="id" name="breadcrumb_section" />
   <java-symbol type="id" name="action_bar_spinner" />
 
+  <!-- Simple color dialog layout. -->
+  <java-symbol type="layout" name="dialog_color_picker" id="0x01090018" />
+  <java-symbol type="id" name="color_picker_view" />
+  <java-symbol type="id" name="old_color_panel" />
+  <java-symbol type="id" name="new_color_panel" />
+  <java-symbol type="id" name="hex" />
+
   <java-symbol type="attr" name="actionModeShareDrawable" />
   <java-symbol type="attr" name="alertDialogCenterButtons" />
   <java-symbol type="attr" name="gestureOverlayViewStyle" />
@@ -240,6 +249,9 @@
   <java-symbol type="attr" name="windowFixedHeightMajor" />
   <java-symbol type="attr" name="windowFixedHeightMinor" />
   <java-symbol type="attr" name="accessibilityFocusedDrawable"/>
+  <java-symbol type="attr" name="drawer_shadow"/>
+  <java-symbol type="attr" name="drawer_background"/>
+  <java-symbol type="attr" name="ic_drawer"/>
 
   <java-symbol type="bool" name="action_bar_embed_tabs" />
   <java-symbol type="bool" name="action_bar_embed_tabs_pre_jb" />
@@ -302,6 +314,7 @@
   <java-symbol type="integer" name="config_lockSoundVolumeDb" />
   <java-symbol type="integer" name="config_multiuserMaximumUsers" />
   <java-symbol type="integer" name="config_safe_media_volume_index" />
+  <java-symbol type="integer" name="min_gesture_prediction_score" />
 
   <java-symbol type="color" name="tab_indicator_text_v4" />
 
@@ -851,6 +864,7 @@
   <java-symbol type="string" name="volume_icon_description_media" />
   <java-symbol type="string" name="volume_icon_description_notification" />
   <java-symbol type="string" name="volume_icon_description_ringer" />
+  <java-symbol type="string" name="reset_perms" />
   <java-symbol type="string" name="wait" />
   <java-symbol type="string" name="wday1_date1_time1_wday2_date2_time2" />
   <java-symbol type="string" name="wday1_date1_wday2_date2" />
