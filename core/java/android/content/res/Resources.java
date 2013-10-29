@@ -1589,7 +1589,7 @@ public class Resources extends ExtendedPropertiesUtils {
                 mMetrics.density = mConfiguration.densityDpi * DisplayMetrics.DENSITY_DEFAULT_SCALE;
                 mMetrics.paranoidHook();
             }
-            mMetrics.scaledDensity = mMetrics.density * mConfiguration.fontScale;
+            mMetrics.scaledDensity = mMetrics.density * mConfiguration.fontScale;            
 
             String locale = null;
             if (mConfiguration.locale != null) {
