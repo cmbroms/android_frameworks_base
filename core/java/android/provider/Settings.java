@@ -3324,6 +3324,18 @@ public final class Settings {
         public static final String NAV_BUTTON_COLOR = "nav_button_color";
 
          /**
+         * Widget Buttons to Use
+         * Ability to change navigation glow color
+         * Format: AARRGGBB|AARRGGBB|index[|speed]
+         * First color is the primary, systemwide color
+         * Second is the color of the current foreground-app
+         * third entry determines which has changed last, 0 or 1
+         * fourth, optional entry determines the transition speed, defaults to 500ms
+         * @hide
+         */
+        public static final String NAV_GLOW_COLOR = "nav_glow_color";
+
+         /**
           * Action to perform when the Camera key is pressed. (Default is 0)
           * (See KEY_HOME_LONG_PRESS_ACTION for valid values)
           * @hide
@@ -3484,6 +3496,22 @@ public final class Settings {
             PHONE_BLACKLIST_PRIVATE_NUMBER_MODE,
             PHONE_BLACKLIST_UNKNOWN_NUMBER_MODE,
             PHONE_BLACKLIST_REGEX_ENABLED,
+        };
+
+        /**
+         * Insecure settings can be set on any context, without any
+         * importance of permission level
+         *
+         * @hide
+         */
+        public static final String[] INSECURE_SETTINGS = {
+            EXPANDED_DESKTOP_STATE,
+            PER_APP_COLOR,
+            NAV_BAR_COLOR,
+            NAV_BUTTON_COLOR,
+            NAV_GLOW_COLOR,
+            STATUS_BAR_COLOR,
+            STATUS_ICON_COLOR
         };
 
         // Settings moved to Settings.Secure
