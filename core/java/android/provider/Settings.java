@@ -3358,6 +3358,17 @@ public final class Settings {
          * fourth, optional entry determines the transition speed, defaults to 500ms
          * @hide
          */
+        public static final String STATUS_BAR_COLOR = "status_bar_color";
+
+        /**
+         * Status icon color. May include alpha
+         * Format: AARRGGBB|AARRGGBB|index[|speed]
+         * First color is the primary, systemwide color
+         * Second is the color of the current foreground-app
+         * third entry determines which has changed last, 0 or 1
+         * fourth, optional entry determines the transition speed, defaults to 500ms
+         * @hide
+         */
         public static final String STATUS_ICON_COLOR = "status_icon_color";
 
 
