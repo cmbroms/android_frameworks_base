@@ -32,8 +32,8 @@ import android.content.ContentProvider;
 import android.content.Context;
 import android.content.ContextWrapper;
 import android.content.IContentProvider;
-import android.content.IIntentReceiver;
 import android.content.Intent;
+import android.content.IIntentReceiver;
 import android.content.pm.ActivityInfo;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.IPackageManager;
@@ -78,12 +78,15 @@ import android.os.ServiceManager;
 import android.os.StrictMode;
 import android.os.SystemClock;
 import android.os.SystemProperties;
+import android.text.TextUtils;
 import android.os.Trace;
 import android.os.UserHandle;
+import android.provider.Settings;
 import android.text.TextUtils;
 import android.util.AndroidRuntimeException;
 import android.util.DisplayMetrics;
 import android.util.EventLog;
+import android.util.ExtendedPropertiesUtils;
 import android.util.Log;
 import android.util.LogPrinter;
 import android.util.PrintWriterPrinter;
@@ -1600,7 +1603,10 @@ public final class ActivityThread {
             if (mScale != peer.mScale) {
                 return false;
             }
-            return mIsThemeable == peer.mIsThemeable;
+            if (mIsThemeable != peer.mIsThemeable) {
+                return false;
+            }
+            return true;
         }
     }
 
@@ -1716,8 +1722,7 @@ public final class ActivityThread {
             CompatibilityInfo compInfo) {
         ResourcesKey key = new ResourcesKey(resDir,
                 displayId, overrideConfiguration,
-                compInfo.applicationScale,
-                compInfo.isThemeable);
+                compInfo.applicationScale, compInfo.isThemeable);
         Resources r;
         synchronized (mPackages) {
             // Resources is app scale dependent.
@@ -1743,13 +1748,27 @@ public final class ActivityThread {
         //}
 
         AssetManager assets = new AssetManager();
+        assets.overrideHook(resDir, ExtendedPropertiesUtils.OverrideMode.FullNameExclude);
         assets.setThemeSupport(compInfo.isThemeable);
         if (assets.addAssetPath(resDir) == 0) {
             return null;
         }
 
+        /* Attach theme information to the resulting AssetManager when appropriate. */
+        Configuration themeConfig = getConfiguration();
+        if (compInfo.isThemeable && themeConfig != null) {
+            if (themeConfig.customTheme == null) {
+                themeConfig.customTheme = CustomTheme.getBootTheme();
+            }
+
+            if (!TextUtils.isEmpty(themeConfig.customTheme.getThemePackageName())) {
+                attachThemeAssets(assets, themeConfig.customTheme);
+            }
+        }
+
         //Slog.i(TAG, "Resource: key=" + key + ", display metrics=" + metrics);
         DisplayMetrics dm = getDisplayMetricsLocked(displayId, null);
+        dm.overrideHook(assets, ExtendedPropertiesUtils.OverrideMode.ExtendedProperties);
         Configuration config;
         boolean isDefaultDisplay = (displayId == Display.DEFAULT_DISPLAY);
         if (!isDefaultDisplay || key.mOverrideConfiguration != null) {
@@ -1763,18 +1782,6 @@ public final class ActivityThread {
         } else {
             config = getConfiguration();
         }
-
-        /* Attach theme information to the resulting AssetManager when appropriate. */
-        if (compInfo.isThemeable && config != null) {
-            if (config.customTheme == null) {
-                config.customTheme = CustomTheme.getBootTheme();
-            }
-
-            if (!TextUtils.isEmpty(config.customTheme.getThemePackageName())) {
-                attachThemeAssets(assets, config.customTheme);
-            }
-        }
-
         r = new Resources(assets, dm, config, compInfo);
         if (false) {
             Slog.i(TAG, "Created app resources " + resDir + " " + r + ": "
@@ -1815,8 +1822,8 @@ public final class ActivityThread {
      *
      * @param assets
      * @param theme
-     * @return true if the AssetManager is now theme-aware; false otherwise.
-     *         This can fail, for example, if the theme package has been been
+     * @return true if the AssetManager is now theme-aware; false otherwise
+     *         This can fail, for example, if the theme package has been
      *         removed and the theme manager has yet to revert formally back to
      *         the framework default.
      */
@@ -1827,8 +1834,7 @@ public final class ActivityThread {
         }
         PackageInfo pi = null;
         try {
-            pi = getPackageManager().getPackageInfo(theme.getThemePackageName(),
-                    0, UserHandle.myUserId());
+            pi = getPackageManager().getPackageInfo(theme.getThemePackageName(), 0, 0);
         } catch (RemoteException e) {
         }
         if (pi != null && pi.applicationInfo != null && pi.themeInfos != null) {
@@ -3097,7 +3103,7 @@ public final class ActivityThread {
                 if (cv == null) {
                     mThumbnailCanvas = cv = new Canvas();
                 }
-
+    
                 cv.setBitmap(thumbnail);
                 if (!r.activity.onCreateThumbnail(thumbnail, cv)) {
                     mAvailThumbnailBitmap = thumbnail;
@@ -3402,7 +3408,7 @@ public final class ActivityThread {
 
     private void handleWindowVisibility(IBinder token, boolean show) {
         ActivityClientRecord r = mActivities.get(token);
-
+        
         if (r == null) {
             Log.w(TAG, "handleWindowVisibility: no activity for token " + token);
             return;
@@ -3817,10 +3823,10 @@ public final class ActivityThread {
                 }
             }
         }
-
+        
         if (DEBUG_CONFIGURATION) Slog.v(TAG, "Relaunching activity "
                 + tmp.token + ": changedConfig=" + changedConfig);
-
+        
         // If there was a pending configuration change, execute it first.
         if (changedConfig != null) {
             mCurDefaultDisplayDpi = changedConfig.densityDpi;
@@ -4044,10 +4050,6 @@ public final class ActivityThread {
             if (r != null) {
                 if (DEBUG_CONFIGURATION) Slog.v(TAG, "Changing resources "
                         + r + " config to: " + config);
-                int displayId = entry.getKey().mDisplayId;
-                boolean isDefaultDisplay = (displayId == Display.DEFAULT_DISPLAY);
-                DisplayMetrics dm = defaultDisplayMetrics;
-                Configuration overrideConfig = entry.getKey().mOverrideConfiguration;
                 boolean themeChanged = (changes & ActivityInfo.CONFIG_THEME_RESOURCE) != 0;
                 if (themeChanged) {
                     AssetManager am = r.getAssets();
@@ -4058,6 +4060,10 @@ public final class ActivityThread {
                         }
                     }
                 }
+                int displayId = entry.getKey().mDisplayId;
+                boolean isDefaultDisplay = (displayId == Display.DEFAULT_DISPLAY);
+                DisplayMetrics dm = defaultDisplayMetrics;
+                Configuration overrideConfig = entry.getKey().mOverrideConfiguration;
                 if (!isDefaultDisplay || overrideConfig != null) {
                     if (tmpConfig == null) {
                         tmpConfig = new Configuration();
@@ -4084,7 +4090,7 @@ public final class ActivityThread {
                 it.remove();
             }
         }
-
+        
         return changes;
     }
 
@@ -4142,12 +4148,12 @@ public final class ActivityThread {
             if (config == null) {
                 return;
             }
-
+            
             if (DEBUG_CONFIGURATION) Slog.v(TAG, "Handle configuration changed: "
                     + config);
-
+        
             diff = applyConfigurationToResourcesLocked(config, compat);
-
+            
             if (mConfiguration == null) {
                 mConfiguration = new Configuration();
             }
@@ -4206,7 +4212,7 @@ public final class ActivityThread {
 
         if (DEBUG_CONFIGURATION) Slog.v(TAG, "Handle activity config changed: "
                 + r.activityInfo.name);
-
+        
         performConfigurationChanged(r.activity, mCompatConfiguration);
 
         freeTextLayoutCachesIfNeeded(r.activity.mCurrentConfig.diff(mCompatConfiguration));
@@ -4216,7 +4222,7 @@ public final class ActivityThread {
         if (start) {
             try {
                 switch (profileType) {
-                    default:
+                    default:                        
                         mProfiler.setProfiler(pcd.path, pcd.fd);
                         mProfiler.autoStopProfiler = false;
                         mProfiler.startProfiling();
@@ -4284,7 +4290,7 @@ public final class ActivityThread {
         ApplicationPackageManager.handlePackageBroadcast(cmd, packages,
                 hasPkgInfo);
     }
-
+        
     final void handleLowMemory() {
         ArrayList<ComponentCallbacks2> callbacks = collectComponentCallbacks(true, null);
 
@@ -4359,6 +4365,8 @@ public final class ActivityThread {
     private void handleBindApplication(AppBindData data) {
         mBoundApplication = data;
         mConfiguration = new Configuration(data.config);
+        mConfiguration.active = true;
+        mConfiguration.overrideHook(data.processName, ExtendedPropertiesUtils.OverrideMode.PackageName);
         mCompatConfiguration = new Configuration(data.config);
 
         mProfiler = new Profiler();
@@ -4464,7 +4472,7 @@ public final class ActivityThread {
             if (cacheDir != null) {
                 // Provide a usable directory for temporary files
                 System.setProperty("java.io.tmpdir", cacheDir.getAbsolutePath());
-
+    
                 setupGraphicsSupport(data.info, cacheDir);
             } else {
                 Log.e(TAG, "Unable to setupGraphicsSupport due to missing cache directory");
@@ -4939,17 +4947,17 @@ public final class ActivityThread {
                     iter.remove();
                 }
             }
-        }
 
-        try {
-            if (DEBUG_PROVIDER) {
-                Slog.v(TAG, "removeProvider: Invoking ActivityManagerNative."
-                        + "removeContentProvider(" + prc.holder.info.name + ")");
+            try {
+                if (DEBUG_PROVIDER) {
+                    Slog.v(TAG, "removeProvider: Invoking ActivityManagerNative."
+                            + "removeContentProvider(" + prc.holder.info.name + ")");
+                }
+                ActivityManagerNative.getDefault().removeContentProvider(
+                        prc.holder.connection, false);
+            } catch (RemoteException e) {
+                //do nothing content provider object is dead any way
             }
-            ActivityManagerNative.getDefault().removeContentProvider(
-                    prc.holder.connection, false);
-        } catch (RemoteException e) {
-            //do nothing content provider object is dead any way
         }
     }
 
@@ -5216,6 +5224,7 @@ public final class ActivityThread {
         HardwareRenderer.disable(true);
         ActivityThread thread = new ActivityThread();
         thread.attach(true);
+        ContextImpl.init(thread);
         return thread;
     }
 
@@ -5282,6 +5291,7 @@ public final class ActivityThread {
 
         ActivityThread thread = new ActivityThread();
         thread.attach(false);
+        ContextImpl.init(thread);
 
         if (sMainThreadHandler == null) {
             sMainThreadHandler = thread.getHandler();

@@ -55,7 +55,9 @@ import android.text.SpannableStringBuilder;
 import android.text.TextUtils;
 import android.text.method.TextKeyListener;
 import android.util.AttributeSet;
+import android.util.ColorUtils;
 import android.util.EventLog;
+import android.util.ExtendedPropertiesUtils;
 import android.util.DisplayMetrics;
 import android.util.Log;
 import android.util.TypedValue;
@@ -83,6 +85,7 @@ import android.view.WindowManager;
 import android.view.WindowManagerGlobal;
 import android.view.accessibility.AccessibilityEvent;
 import android.widget.AdapterView;
+import android.widget.Toast;
 
 import java.io.FileDescriptor;
 import java.io.PrintWriter;
@@ -2415,6 +2418,9 @@ public class Activity extends ContextThemeWrapper
         return onKeyShortcut(event.getKeyCode(), event);
     }
 
+    boolean mightBeMyGesture = false;
+    float tStatus;
+
     /**
      * Called to process touch screen events.  You can override this to
      * intercept all touch screen events before they are dispatched to the
@@ -2426,6 +2432,44 @@ public class Activity extends ContextThemeWrapper
      * @return boolean Return true if this event was consumed.
      */
     public boolean dispatchTouchEvent(MotionEvent ev) {
+            boolean mHiddenStatusbarPulldown = (Settings.System.getInt(getContentResolver(),
+                Settings.System.HIDDEN_STATUSBAR_PULLDOWN, 0) == 1);
+            int mHiddenStatusbarPulldownTimeout = (Settings.System.getInt(getContentResolver(),
+                Settings.System.HIDDEN_STATUSBAR_PULLDOWN_TIMEOUT, 5000));
+
+            switch (ev.getAction())
+            {
+                case MotionEvent.ACTION_DOWN:
+                    tStatus = ev.getY();
+                    if (tStatus < getStatusBarHeight() && mHiddenStatusbarPulldown)
+                    {
+                        mightBeMyGesture = true;
+                        return true;
+                    }
+                    break;
+                case MotionEvent.ACTION_MOVE:
+                    if (mightBeMyGesture && mHiddenStatusbarPulldown)
+                    {
+                        if(ev.getY() > tStatus)
+                        {
+                            getWindow().addFlags(WindowManager.LayoutParams.FLAG_FORCE_NOT_FULLSCREEN);
+                            getWindow().clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
+                            mHandler.postDelayed(new Runnable() {
+                            public void run() {
+                                getWindow().clearFlags(WindowManager.LayoutParams.FLAG_FORCE_NOT_FULLSCREEN);
+                                getWindow().addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
+                            }
+                            }, mHiddenStatusbarPulldownTimeout);
+                        }
+                        mightBeMyGesture = false;
+                        return true;
+                    }
+                    break;
+                default:
+                    mightBeMyGesture = false;
+                    break;
+              }
+              
         if (ev.getAction() == MotionEvent.ACTION_DOWN) {
             onUserInteraction();
         }
@@ -2433,6 +2477,10 @@ public class Activity extends ContextThemeWrapper
             return true;
         }
         return onTouchEvent(ev);
+    }
+
+    public int getStatusBarHeight() {
+      return getResources().getDimensionPixelSize(com.android.internal.R.dimen.status_bar_height);
     }
     
     /**
@@ -4712,6 +4760,7 @@ public class Activity extends ContextThemeWrapper
      * @see android.view.Window#getLayoutInflater
      */
     public View onCreateView(View parent, String name, Context context, AttributeSet attrs) {
+
         if (!"fragment".equals(name)) {
             return onCreateView(name, context, attrs);
         }
@@ -5271,6 +5320,38 @@ public class Activity extends ContextThemeWrapper
     }
     
     final void performResume() {
+        // Per-App-Extras
+        if (mWindow != null && ExtendedPropertiesUtils.isInitialized() ) {
+            try {
+                // Per-App-Expand
+                if (ExtendedPropertiesUtils.mGlobalHook.expand == 1) {
+                    Settings.System.putInt(this.getContentResolver(),
+                            Settings.System.EXPANDED_DESKTOP_STATE, 1);
+                }
+                // Per-App-Color
+                else if (!(mWindow != null && mWindow.mIsFloatingWindow) &&
+                        ExtendedPropertiesUtils.mGlobalHook.mancol != 1 && ColorUtils.getPerAppColorState(this)) {
+                    for (int i = 0; i < ExtendedPropertiesUtils.PARANOID_COLORS_COUNT; i++) {
+                        // Get color settings
+                        String setting = ExtendedPropertiesUtils.PARANOID_COLORS_SETTINGS[i];
+                        ColorUtils.ColorSettingInfo colorInfo = ColorUtils.getColorSettingInfo(this, setting);
+
+                        // Get appropriate color
+                        String appColor = ExtendedPropertiesUtils.mGlobalHook.colors[i];
+                        String nextColor = (appColor == null || appColor.equals("")) ?
+                                colorInfo.systemColorString : appColor;
+
+                        // Change only if colors actually differ
+                        if (!nextColor.toUpperCase().equals(colorInfo.lastColorString.toUpperCase())) {
+                            ColorUtils.setColor(this, setting, colorInfo.systemColorString, nextColor, 1);
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                // Current application is null, or hook is not set
+            }
+        }
+
         performRestart();
         
         mFragments.execPendingActions();
@@ -5301,6 +5382,18 @@ public class Activity extends ContextThemeWrapper
     }
 
     final void performPause() {
+        // Per-App-Extras
+        if (ExtendedPropertiesUtils.isInitialized() &&
+            mParent == null && mDecor != null && mDecor.getParent() != null &&
+            ExtendedPropertiesUtils.mGlobalHook.expand == 1) {
+            try {
+                Settings.System.putInt(this.getContentResolver(),
+                    Settings.System.EXPANDED_DESKTOP_STATE, 0);
+            } catch (Exception e) {
+                    // Current application is null, or hook is not set
+            }
+        }
+
         mFragments.dispatchPause();
         mCalled = false;
         onPause();
@@ -5318,7 +5411,7 @@ public class Activity extends ContextThemeWrapper
         onUserInteraction();
         onUserLeaveHint();
     }
-    
+
     final void performStop() {
         if (mLoadersStarted) {
             mLoadersStarted = false;
