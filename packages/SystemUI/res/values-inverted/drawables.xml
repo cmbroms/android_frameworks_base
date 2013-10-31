@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <item type="drawable" name="notification_number_text_color">#ffffffff</item>
+    <item type="drawable" name="notification_item_background_color">#90000000</item>
+    <item type="drawable" name="notification_item_background_color_pressed">#ffff0000</item>
+    <item type="drawable" name="ticker_background_color">#ffff0000</item>
+    <item type="drawable" name="status_bar_background">@drawable/com_android_systemui_status_bar_bg_tile</item>
+    <item type="drawable" name="status_bar_recents_background_solid">#b3000000</item>
+    <item type="drawable" name="status_bar_recents_app_thumbnail_background">#88000000</item>
+    <item type="drawable" name="status_bar_notification_row_background_color">#90000000</item>
+    <item type="drawable" name="notification_header_bg">#ff000000</item>
+    <item type="drawable" name="recents_callout_line">#99ffffff</item>
+    <item type="drawable" name="notification_item_background_legacy_color">#90050505</item>
+    <item type="drawable" name="list_normal">#ffff0000</item>
+    <item type="drawable" name="list_active">#ffff0000</item>
+    <item type="drawable" name="blue_light_highlight">#ffff0000</item>
+    <item type="drawable" name="blue_light_sub_background">#ffff0000</item>
+    <item type="drawable" name="notification_template_icon_bg">#33ff0000</item>
+    <item type="drawable" name="intruder_bg_pressed">#ffff0000</item>
+    <item type="drawable" name="system_bar_background">#ff000000</item>
+    <item type="drawable" name="notification_template_icon_low_bg">#ff000000</item>
+    <item type="drawable" name="notification_icon_area_smoke">#ff000000</item>
+    <item type="drawable" name="notification_panel_bg">@drawable/status_bar_background2</item>
+    <item type="drawable" name="nav_bar_bg">@drawable/com_android_systemui_nav_bar_bg</item>
+</resources>
