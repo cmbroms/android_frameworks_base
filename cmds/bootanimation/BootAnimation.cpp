@@ -44,7 +44,7 @@
 
 #include <core/SkBitmap.h>
 #include <core/SkStream.h>
-#include <images/SkImageDecoder.h>
+#include <core/SkImageDecoder.h>
 
 #include <GLES/gl.h>
 #include <GLES/glext.h>
@@ -482,7 +482,7 @@ bool BootAnimation::movie()
             const String8 path(entryName.getPathDir());
             const String8 leaf(entryName.getPathLeaf());
             if (leaf.size() > 0) {
-                for (size_t j=0 ; j<pcount ; j++) {
+                for (int j=0 ; j<pcount ; j++) {
                     if (path == animation.parts[j].path) {
                         int method;
                         // supports only stored png files
@@ -553,7 +553,7 @@ bool BootAnimation::movie()
                 const Animation::Frame& frame(part.frames[j]);
                 nsecs_t lastFrame = systemTime();
 
-                if (r > 0 && !noTextureCache) {
+                if (r > 0) {
                     glBindTexture(GL_TEXTURE_2D, frame.tid);
                 } else {
                     if (part.count != 1) {
@@ -611,8 +611,8 @@ bool BootAnimation::movie()
         }
 
         // free the textures for this part
-        if (part.count != 1 && !noTextureCache) {
-            for (size_t j=0 ; j<fcount ; j++) {
+        if (part.count != 1) {
+            for (int j=0 ; j<fcount ; j++) {
                 const Animation::Frame& frame(part.frames[j]);
                 glDeleteTextures(1, &frame.tid);
             }
