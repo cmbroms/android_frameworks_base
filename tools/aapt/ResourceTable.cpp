@@ -1,6 +1,5 @@
 //
 // Copyright 2006 The Android Open Source Project
-// This code has been modified.  Portions copyright (C) 2010, T-Mobile USA, Inc.
 //
 // Build resource files from raw assets.
 //
@@ -14,7 +13,6 @@
 #include <androidfw/ResourceTypes.h>
 #include <utils/ByteOrder.h>
 #include <stdarg.h>
-#include <stdlib.h>
 
 #define NOISY(x) //x
 
@@ -638,6 +636,30 @@ bool isInProductList(const String16& needle, const String16& haystack) {
     return false;
 }
 
+/*
+ * A simple container that holds a resource type and name. It is ordered first by type then
+ * by name.
+ */
+struct type_ident_pair_t {
+    String16 type;
+    String16 ident;
+
+    type_ident_pair_t() { };
+    type_ident_pair_t(const String16& t, const String16& i) : type(t), ident(i) { }
+    type_ident_pair_t(const type_ident_pair_t& o) : type(o.type), ident(o.ident) { }
+    inline bool operator < (const type_ident_pair_t& o) const {
+        int cmp = compare_type(type, o.type);
+        if (cmp < 0) {
+            return true;
+        } else if (cmp > 0) {
+            return false;
+        } else {
+            return strictly_order_type(ident, o.ident);
+        }
+    }
+};
+
+
 status_t parseAndAddEntry(Bundle* bundle,
                         const sp<AaptFile>& in,
                         ResXMLTree* block,
@@ -652,6 +674,7 @@ status_t parseAndAddEntry(Bundle* bundle,
                         const String16& product,
                         bool pseudolocalize,
                         const bool overwrite,
+                        KeyedVector<type_ident_pair_t, bool>* skippedResourceNames,
                         ResourceTable* outTable)
 {
     status_t err;
@@ -686,6 +709,13 @@ status_t parseAndAddEntry(Bundle* bundle,
 
         if (bundleProduct[0] == '\0') {
             if (strcmp16(String16("default").string(), product.string()) != 0) {
+                /*
+                 * This string has a product other than 'default'. Do not add it,
+                 * but record it so that if we do not see the same string with
+                 * product 'default' or no product, then report an error.
+                 */
+                skippedResourceNames->replaceValueFor(
+                        type_ident_pair_t(curType, ident), true);
                 return NO_ERROR;
             }
         } else {
@@ -791,7 +821,6 @@ status_t compileResourceFile(Bundle* bundle,
     const String16 myPackage(assets->getPackage());
 
     bool hasErrors = false;
-    bool errorOnWarning = getenv("AAPT_ERROR_ON_WARNING") != NULL ? true : false;
 
     bool fileIsTranslatable = true;
     if (strstr(in->getPrintableSource().string(), "donottranslate") != NULL) {
@@ -799,6 +828,11 @@ status_t compileResourceFile(Bundle* bundle,
     }
 
     DefaultKeyedVector<String16, uint32_t> nextPublicId(0);
+
+    // Stores the resource names that were skipped. Typically this happens when
+    // AAPT is invoked without a product specified and a resource has no
+    // 'default' product attribute.
+    KeyedVector<type_ident_pair_t, bool> skippedResourceNames;
 
     ResXMLTree::event_code_t code;
     do {
@@ -1287,9 +1321,7 @@ status_t compileResourceFile(Bundle* bundle,
                                     " in locale '%s'\n", String8(name).string(),
                                     bundle->getResourceSourceDirs()[0],
                                     locale.string());
-                            if (errorOnWarning) {
-                                hasErrors = localHasErrors = true;
-                            }
+                            // hasErrors = localHasErrors = true;
                         } else {
                             // Intentionally empty block:
                             //
@@ -1373,34 +1405,17 @@ status_t compileResourceFile(Bundle* bundle,
                     }
                 }
             } else if (strcmp16(block.getElementName(&len), string_array16.string()) == 0) {
-                // Note the existence and locale of every string we process
-                char rawLocale[16];
-                curParams.getLocale(rawLocale);
-                String8 locale(rawLocale);
-                String16 name;
                 // Check whether these strings need valid formats.
                 // (simplified form of what string16 does above)
                 size_t n = block.getAttributeCount();
                 for (size_t i = 0; i < n; i++) {
                     size_t length;
                     const uint16_t* attr = block.getAttributeName(i, &length);
-                    if (strcmp16(attr, name16.string()) == 0) {
-                        name.setTo(block.getAttributeStringValue(i, &length));
-                    } else if (strcmp16(attr, translatable16.string()) == 0
+                    if (strcmp16(attr, translatable16.string()) == 0
                             || strcmp16(attr, formatted16.string()) == 0) {
                         const uint16_t* value = block.getAttributeStringValue(i, &length);
                         if (strcmp16(value, false16.string()) == 0) {
                             curIsFormatted = false;
-                            // Untranslatable strings must only exist in the default [empty] locale
-                            if (locale.size() > 0) {
-                                fprintf(stderr, "aapt: warning: string-array '%s' in %s marked untranslatable but exists"
-                                        " in locale '%s'\n", String8(name).string(),
-                                        bundle->getResourceSourceDirs()[0],
-                                        locale.string());
-                                if (errorOnWarning) {
-                                    hasErrors = localHasErrors = true;
-                                }
-                            }
                             break;
                         }
                     }
@@ -1566,7 +1581,7 @@ status_t compileResourceFile(Bundle* bundle,
 
                 err = parseAndAddEntry(bundle, in, &block, curParams, myPackage, curType, ident,
                         *curTag, curIsStyled, curFormat, curIsFormatted,
-                        product, false, overwrite, outTable);
+                        product, false, overwrite, &skippedResourceNames, outTable);
 
                 if (err < NO_ERROR) { // Why err < NO_ERROR instead of err != NO_ERROR?
                     hasErrors = localHasErrors = true;
@@ -1579,7 +1594,7 @@ status_t compileResourceFile(Bundle* bundle,
                         err = parseAndAddEntry(bundle, in, &block, pseudoParams, myPackage, curType,
                                 ident, *curTag, curIsStyled, curFormat,
                                 curIsFormatted, product,
-                                true, overwrite, outTable);
+                                true, overwrite, &skippedResourceNames, outTable);
                         if (err != NO_ERROR) {
                             hasErrors = localHasErrors = true;
                         }
@@ -1615,6 +1630,30 @@ status_t compileResourceFile(Bundle* bundle,
                     "Found text \"%s\" where item tag is expected\n",
                     String8(block.getText(&len)).string());
             return UNKNOWN_ERROR;
+        }
+    }
+
+    // For every resource defined, there must be exist one variant with a product attribute
+    // set to 'default' (or no product attribute at all).
+    // We check to see that for every resource that was ignored because of a mismatched
+    // product attribute, some product variant of that resource was processed.
+    for (size_t i = 0; i < skippedResourceNames.size(); i++) {
+        if (skippedResourceNames[i]) {
+            const type_ident_pair_t& p = skippedResourceNames.keyAt(i);
+            if (!outTable->hasBagOrEntry(myPackage, p.type, p.ident)) {
+                const char* bundleProduct =
+                        (bundle->getProduct() == NULL) ? "" : bundle->getProduct();
+                fprintf(stderr, "In resource file %s: %s\n",
+                        in->getPrintableSource().string(),
+                        curParams.toString().string());
+
+                fprintf(stderr, "\t%s '%s' does not match product %s.\n"
+                        "\tYou may have forgotten to include a 'default' product variant"
+                        " of the resource.\n",
+                        String8(p.type).string(), String8(p.ident).string(),
+                        bundleProduct[0] == 0 ? "default" : bundleProduct);
+                return UNKNOWN_ERROR;
+            }
         }
     }
 
@@ -2505,8 +2544,8 @@ status_t ResourceTable::addSymbols(const sp<AaptSymbols>& outSymbols) {
                     
                     String16 comment(c->getComment());
                     typeSymbols->appendComment(String8(c->getName()), comment, c->getPos());
-                    //printf("Type symbol %s comment: %s\n", String8(e->getName()).string(),
-                    //     String8(comment).string());
+                    //printf("Type symbol [%08x] %s comment: %s\n", rid,
+                    //        String8(c->getName()).string(), String8(comment).string());
                     comment = c->getTypeComment();
                     typeSymbols->appendTypeComment(String8(c->getName()), comment);
                 } else {
@@ -2533,9 +2572,9 @@ ResourceTable::addLocalization(const String16& name, const String8& locale)
  * Flag various sorts of localization problems.  '+' indicates checks already implemented;
  * '-' indicates checks that will be implemented in the future.
  *
- * + A localized string for which no default-locale version exists => warning or error
+ * + A localized string for which no default-locale version exists => warning
  * + A string for which no version in an explicitly-requested locale exists => warning
- * + A localized translation of an translateable="false" string => warning or error
+ * + A localized translation of an translateable="false" string => warning
  * - A localized string not provided in every locale used by the table
  */
 status_t
@@ -2543,7 +2582,6 @@ ResourceTable::validateLocalizations(void)
 {
     status_t err = NO_ERROR;
     const String8 defaultLocale;
-    bool errorOnWarning = getenv("AAPT_ERROR_ON_WARNING") != NULL ? true : false;
 
     // For all strings...
     for (map<String16, set<String8> >::iterator nameIter = mLocalizations.begin();
@@ -2553,17 +2591,15 @@ ResourceTable::validateLocalizations(void)
 
         // Look for strings with no default localization
         if (configSet.count(defaultLocale) == 0) {
-            fprintf(stderr, "aapt: warning: string '%s' has no default translation in %s; found:",
+            fprintf(stdout, "aapt: warning: string '%s' has no default translation in %s; found:",
                     String8(nameIter->first).string(), mBundle->getResourceSourceDirs()[0]);
             for (set<String8>::const_iterator locales = configSet.begin();
                  locales != configSet.end();
                  locales++) {
-                fprintf(stderr, " %s", (*locales).string());
+                fprintf(stdout, " %s", (*locales).string());
             }
-            fprintf(stderr, "\n");
-            if (errorOnWarning) {
-                err = BAD_VALUE;
-            }
+            fprintf(stdout, "\n");
+            // !!! TODO: throw an error here in some circumstances
         }
 
         // Check that all requested localizations are present for this string
@@ -3780,16 +3816,7 @@ sp<ResourceTable::Package> ResourceTable::getPackage(const String16& package)
             mHaveAppPackage = true;
             p = new Package(package, 127);
         } else {
-            int extendedPackageId = mBundle->getExtendedPackageId();
-            if (extendedPackageId != 0) {
-                if ((uint32_t)extendedPackageId < mNextPackageId) {
-                    fprintf(stderr, "Package ID %d already in use!\n", mNextPackageId);
-                    return NULL;
-                }
-                p = new Package(package, extendedPackageId);
-            } else {
-                p = new Package(package, mNextPackageId);
-            }
+            p = new Package(package, mNextPackageId);
         }
         //printf("*** NEW PACKAGE: \"%s\" id=%d\n",
         //       String8(package).string(), p->getAssignedId());

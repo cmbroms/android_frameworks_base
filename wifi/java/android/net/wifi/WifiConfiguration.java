@@ -44,10 +44,6 @@ public class WifiConfiguration implements Parcelable {
     /** {@hide} */
     public static final String hiddenSSIDVarName = "scan_ssid";
     /** {@hide} */
-    public static final String modeVarName = "mode";
-    /** {@hide} */
-    public static final String frequencyVarName = "frequency";
-    /** {@hide} */
     public static final int INVALID_NETWORK_ID = -1;
     /**
      * Recognized key management schemes.
@@ -250,18 +246,6 @@ public class WifiConfiguration implements Parcelable {
      */
     public boolean hiddenSSID;
 
-   /**
-     * This is an Ad-Hoc (IBSS) network
-     * {@hide}
-     */
-    public boolean isIBSS;
-
-    /**
-     * Frequency of the Ad-Hoc (IBSS) network, if newly created
-     * {@hide}
-     */
-    public int frequency;
-
     /**
      * The set of key management protocols supported by this configuration.
      * See {@link KeyMgmt} for descriptions of the values.
@@ -328,7 +312,10 @@ public class WifiConfiguration implements Parcelable {
         STATIC,
         /* no proxy details are assigned, this is used to indicate
          * that any existing proxy settings should be retained */
-        UNASSIGNED
+        UNASSIGNED,
+        /* Use a Pac based proxy.
+         */
+        PAC
     }
     /**
      * @hide
@@ -345,8 +332,6 @@ public class WifiConfiguration implements Parcelable {
         BSSID = null;
         priority = 0;
         hiddenSSID = false;
-        isIBSS = false;
-        frequency = 0;
         disableReason = DISABLED_UNKNOWN_REASON;
         allowedKeyManagement = new BitSet();
         allowedProtocols = new BitSet();
@@ -361,6 +346,29 @@ public class WifiConfiguration implements Parcelable {
         ipAssignment = IpAssignment.UNASSIGNED;
         proxySettings = ProxySettings.UNASSIGNED;
         linkProperties = new LinkProperties();
+    }
+
+    /**
+     * indicates whether the configuration is valid
+     * @return true if valid, false otherwise
+     * @hide
+     */
+    public boolean isValid() {
+        if (allowedKeyManagement.cardinality() > 1) {
+            if (allowedKeyManagement.cardinality() != 2) {
+                return false;
+            }
+            if (allowedKeyManagement.get(KeyMgmt.WPA_EAP) == false) {
+                return false;
+            }
+            if ((allowedKeyManagement.get(KeyMgmt.IEEE8021X) == false)
+                    && (allowedKeyManagement.get(KeyMgmt.WPA_PSK) == false)) {
+                return false;
+            }
+        }
+
+        // TODO: Add more checks
+        return true;
     }
 
     @Override
@@ -547,8 +555,8 @@ public class WifiConfiguration implements Parcelable {
 
     /** @hide */
     public int getAuthType() {
-        if (allowedKeyManagement.cardinality() > 1) {
-            throw new IllegalStateException("More than one auth type set");
+        if (isValid() == false) {
+            throw new IllegalStateException("Invalid configuration");
         }
         if (allowedKeyManagement.get(KeyMgmt.WPA_PSK)) {
             return KeyMgmt.WPA_PSK;
@@ -585,8 +593,6 @@ public class WifiConfiguration implements Parcelable {
             wepTxKeyIndex = source.wepTxKeyIndex;
             priority = source.priority;
             hiddenSSID = source.hiddenSSID;
-            isIBSS = source.isIBSS;
-            frequency = source.frequency;
             allowedKeyManagement   = (BitSet) source.allowedKeyManagement.clone();
             allowedProtocols       = (BitSet) source.allowedProtocols.clone();
             allowedAuthAlgorithms  = (BitSet) source.allowedAuthAlgorithms.clone();
@@ -615,8 +621,6 @@ public class WifiConfiguration implements Parcelable {
         dest.writeInt(wepTxKeyIndex);
         dest.writeInt(priority);
         dest.writeInt(hiddenSSID ? 1 : 0);
-        dest.writeInt(isIBSS ? 1 : 0);
-        dest.writeInt(frequency);
 
         writeBitSet(dest, allowedKeyManagement);
         writeBitSet(dest, allowedProtocols);
@@ -648,8 +652,6 @@ public class WifiConfiguration implements Parcelable {
                 config.wepTxKeyIndex = in.readInt();
                 config.priority = in.readInt();
                 config.hiddenSSID = in.readInt() != 0;
-                config.isIBSS = in.readInt() != 0;
-                config.frequency = in.readInt();
                 config.allowedKeyManagement   = readBitSet(in);
                 config.allowedProtocols       = readBitSet(in);
                 config.allowedAuthAlgorithms  = readBitSet(in);

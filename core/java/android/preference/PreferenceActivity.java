@@ -33,6 +33,7 @@ import android.os.Parcel;
 import android.os.Parcelable;
 import android.text.TextUtils;
 import android.util.AttributeSet;
+import android.util.Log;
 import android.util.TypedValue;
 import android.util.Xml;
 import android.view.LayoutInflater;
@@ -124,6 +125,8 @@ public abstract class PreferenceActivity extends ListActivity implements
         PreferenceManager.OnPreferenceTreeClickListener,
         PreferenceFragment.OnPreferenceStartFragmentCallback {
 
+    private static final String TAG = "PreferenceActivity";
+
     // Constants for state save/restore
     private static final String HEADERS_TAG = ":android:headers";
     private static final String CUR_HEADER_TAG = ":android:cur_header";
@@ -132,6 +135,9 @@ public abstract class PreferenceActivity extends ListActivity implements
     /**
      * When starting this activity, the invoking Intent can contain this extra
      * string to specify which fragment should be initially displayed.
+     * <p/>Starting from Key Lime Pie, when this argument is passed in, the PreferenceActivity
+     * will call isValidFragment() to confirm that the fragment class name is valid for this
+     * activity.
      */
     public static final String EXTRA_SHOW_FRAGMENT = ":android:show_fragment";
 
@@ -150,10 +156,6 @@ public abstract class PreferenceActivity extends ListActivity implements
      */
     public static final String EXTRA_SHOW_FRAGMENT_TITLE = ":android:show_fragment_title";
 
-    // fix for title text for startPreferencePanel in a single pane mode
-    /** @hide */
-    public static final String EXTRA_SHOW_FRAGMENT_TITLE_TEXT = ":android:show_fragment_title_text";
-
     /**
      * When starting this activity and using {@link #EXTRA_SHOW_FRAGMENT},
      * this extra can also be specify to supply the short title to be shown for
@@ -161,11 +163,6 @@ public abstract class PreferenceActivity extends ListActivity implements
      */
     public static final String EXTRA_SHOW_FRAGMENT_SHORT_TITLE
             = ":android:show_fragment_short_title";
-
-    // fix for short title text for startPreferencePanel in a single pane mode
-    /** @hide */
-    public static final String EXTRA_SHOW_FRAGMENT_SHORT_TITLE_TEXT
-            = ":android:show_fragment_short_title_text";
 
     /**
      * When starting this activity, the invoking Intent can contain this extra
@@ -308,7 +305,7 @@ public abstract class PreferenceActivity extends ListActivity implements
      * are valid.
      */
     public static final long HEADER_ID_UNDEFINED = -1;
-    
+
     /**
      * Description of a single Header item that the user can select.
      */
@@ -551,13 +548,6 @@ public abstract class PreferenceActivity extends ListActivity implements
                     CharSequence initialShortTitleStr = initialShortTitle != 0
                             ? getText(initialShortTitle) : null;
                     showBreadCrumbs(initialTitleStr, initialShortTitleStr);
-                } else {
-                    CharSequence initialTitleStr = getIntent().getStringExtra(EXTRA_SHOW_FRAGMENT_TITLE_TEXT);
-                    if ( initialTitleStr != null ) {
-                        CharSequence initialShortTitleStr
-                                = getIntent().getStringExtra(EXTRA_SHOW_FRAGMENT_SHORT_TITLE_TEXT);
-                        showBreadCrumbs(initialTitleStr, initialShortTitleStr);
-                    }
                 }
 
             } else {
@@ -591,13 +581,6 @@ public abstract class PreferenceActivity extends ListActivity implements
                 CharSequence initialShortTitleStr = initialShortTitle != 0
                         ? getText(initialShortTitle) : null;
                 showBreadCrumbs(initialTitleStr, initialShortTitleStr);
-            } else {
-                CharSequence initialTitleStr = getIntent().getStringExtra(EXTRA_SHOW_FRAGMENT_TITLE_TEXT);
-                if ( initialTitleStr != null ) {
-                    CharSequence initialShortTitleStr
-                            = getIntent().getStringExtra(EXTRA_SHOW_FRAGMENT_SHORT_TITLE_TEXT);
-                    showBreadCrumbs(initialTitleStr, initialShortTitleStr);
-                }
             }
         } else if (mHeaders.size() > 0) {
             setListAdapter(new HeaderAdapter(this, mHeaders));
@@ -900,7 +883,25 @@ public abstract class PreferenceActivity extends ListActivity implements
         } finally {
             if (parser != null) parser.close();
         }
+    }
 
+    /**
+     * Subclasses should override this method and verify that the given fragment is a valid type
+     * to be attached to this activity. The default implementation returns <code>true</code> for
+     * apps built for <code>android:targetSdkVersion</code> older than
+     * {@link android.os.Build.VERSION_CODES#KITKAT}. For later versions, it will throw an exception.
+     * @param fragmentName the class name of the Fragment about to be attached to this activity.
+     * @return true if the fragment class name is valid for this Activity and false otherwise.
+     */
+    protected boolean isValidFragment(String fragmentName) {
+        if (getApplicationInfo().targetSdkVersion  >= android.os.Build.VERSION_CODES.KITKAT) {
+            throw new RuntimeException(
+                    "Subclasses of PreferenceActivity must override isValidFragment(String)"
+                    + " to verify that the Fragment class is valid! " + this.getClass().getName()
+                    + " has not checked if fragment " + fragmentName + " is valid.");
+        } else {
+            return true;
+        }
     }
 
     /**
@@ -924,6 +925,8 @@ public abstract class PreferenceActivity extends ListActivity implements
 
     @Override
     protected void onDestroy() {
+        mHandler.removeMessages(MSG_BIND_PREFERENCES);
+        mHandler.removeMessages(MSG_BUILD_HEADERS);
         super.onDestroy();
 
         if (mPreferenceManager != null) {
@@ -994,6 +997,9 @@ public abstract class PreferenceActivity extends ListActivity implements
 
     @Override
     protected void onListItemClick(ListView l, View v, int position, long id) {
+        if (!isResumed()) {
+            return;
+        }
         super.onListItemClick(l, v, position, id);
 
         if (mAdapter != null) {
@@ -1055,21 +1061,7 @@ public abstract class PreferenceActivity extends ListActivity implements
         intent.putExtra(EXTRA_NO_HEADERS, true);
         return intent;
     }
-
-    // fix for title text for startPreferencePanel in a single pane mode
-    /** @hide */
-    public Intent onBuildStartFragmentIntent(String fragmentName, Bundle args,
-            CharSequence titleText, CharSequence shortTitleText) {
-        Intent intent = new Intent(Intent.ACTION_MAIN);
-        intent.setClass(this, getClass());
-        intent.putExtra(EXTRA_SHOW_FRAGMENT, fragmentName);
-        intent.putExtra(EXTRA_SHOW_FRAGMENT_ARGUMENTS, args);
-        intent.putExtra(EXTRA_SHOW_FRAGMENT_TITLE_TEXT, titleText);
-        intent.putExtra(EXTRA_SHOW_FRAGMENT_SHORT_TITLE_TEXT, shortTitleText);
-        intent.putExtra(EXTRA_NO_HEADERS, true);
-        return intent;
-    }
-
+    
     /**
      * Like {@link #startWithFragment(String, Bundle, Fragment, int, int, int)}
      * but uses a 0 titleRes.
@@ -1106,18 +1098,6 @@ public abstract class PreferenceActivity extends ListActivity implements
         }
     }
 
-    // fix for title text for startPreferencePanel in a single pane mode
-    /** @hide */
-    public void startWithFragment(String fragmentName, Bundle args, Fragment resultTo,
-            int resultRequestCode, CharSequence titleText, CharSequence shortTitleText) {
-        Intent intent = onBuildStartFragmentIntent(fragmentName, args, titleText, shortTitleText);
-        if (resultTo == null) {
-            startActivity(intent);
-        } else {
-            resultTo.startActivityForResult(intent, resultRequestCode);
-        }
-    }
-
     /**
      * Change the base title of the bread crumbs for the current preferences.
      * This will normally be called for you.  See
@@ -1130,6 +1110,7 @@ public abstract class PreferenceActivity extends ListActivity implements
             try {
                 mFragmentBreadCrumbs = (FragmentBreadCrumbs)crumbs;
             } catch (ClassCastException e) {
+                setTitle(title);
                 return;
             }
             if (mFragmentBreadCrumbs == null) {
@@ -1143,12 +1124,17 @@ public abstract class PreferenceActivity extends ListActivity implements
                 // Hide the breadcrumb section completely for single-pane
                 View bcSection = findViewById(com.android.internal.R.id.breadcrumb_section);
                 if (bcSection != null) bcSection.setVisibility(View.GONE);
+                setTitle(title);
             }
             mFragmentBreadCrumbs.setMaxVisible(2);
             mFragmentBreadCrumbs.setActivity(this);
         }
-        mFragmentBreadCrumbs.setTitle(title, shortTitle);
-        mFragmentBreadCrumbs.setParentTitle(null, null, null);
+        if (mFragmentBreadCrumbs.getVisibility() != View.VISIBLE) {
+            setTitle(title);
+        } else {
+            mFragmentBreadCrumbs.setTitle(title, shortTitle);
+            mFragmentBreadCrumbs.setParentTitle(null, null, null);
+        }
     }
 
     /**
@@ -1190,6 +1176,10 @@ public abstract class PreferenceActivity extends ListActivity implements
     private void switchToHeaderInner(String fragmentName, Bundle args, int direction) {
         getFragmentManager().popBackStack(BACK_STACK_PREFS,
                 FragmentManager.POP_BACK_STACK_INCLUSIVE);
+        if (!isValidFragment(fragmentName)) {
+            throw new IllegalArgumentException("Invalid fragment for this activity: "
+                    + fragmentName);
+        }
         Fragment f = Fragment.instantiate(this, fragmentName, args);
         FragmentTransaction transaction = getFragmentManager().beginTransaction();
         transaction.setTransition(FragmentTransaction.TRANSIT_FRAGMENT_FADE);
@@ -1296,7 +1286,7 @@ public abstract class PreferenceActivity extends ListActivity implements
     }
 
     /**
-     * Start a new fragment containing a preference panel.  If the prefences
+     * Start a new fragment containing a preference panel.  If the preferences
      * are being displayed in multi-pane mode, the given fragment class will
      * be instantiated and placed in the appropriate pane.  If running in
      * single-pane mode, a new activity will be launched in which to show the
@@ -1317,12 +1307,7 @@ public abstract class PreferenceActivity extends ListActivity implements
     public void startPreferencePanel(String fragmentClass, Bundle args, int titleRes,
             CharSequence titleText, Fragment resultTo, int resultRequestCode) {
         if (mSinglePane) {
-            // fix for title text for startPreferencePanel in a single pane mode
-            if (titleRes == 0 && titleText != null) {
-                startWithFragment(fragmentClass, args, resultTo, resultRequestCode, titleText, null);
-            } else {
-                startWithFragment(fragmentClass, args, resultTo, resultRequestCode, titleRes, 0);
-            }
+            startWithFragment(fragmentClass, args, resultTo, resultRequestCode, titleRes, 0);
         } else {
             Fragment f = Fragment.instantiate(this, fragmentClass, args);
             if (resultTo != null) {
@@ -1340,7 +1325,7 @@ public abstract class PreferenceActivity extends ListActivity implements
             transaction.commitAllowingStateLoss();
         }
     }
-    
+
     /**
      * Called by a preference panel fragment to finish itself.
      * 

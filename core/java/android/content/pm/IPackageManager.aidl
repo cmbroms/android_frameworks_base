@@ -42,7 +42,6 @@ import android.content.pm.ServiceInfo;
 import android.content.pm.UserInfo;
 import android.content.pm.VerificationParams;
 import android.content.pm.VerifierDeviceIdentity;
-import android.content.pm.ThemeInfo;
 import android.net.Uri;
 import android.os.ParcelFileDescriptor;
 import android.content.IntentSender;
@@ -102,7 +101,9 @@ interface IPackageManager {
     String getNameForUid(int uid);
     
     int getUidForSharedUser(String sharedUserName);
-    
+
+    int getFlagsForUid(int uid);
+
     ResolveInfo resolveIntent(in Intent intent, String resolvedType, int flags, int userId);
 
     List<ResolveInfo> queryIntentActivities(in Intent intent, 
@@ -120,6 +121,9 @@ interface IPackageManager {
             String resolvedType, int flags, int userId);
 
     List<ResolveInfo> queryIntentServices(in Intent intent,
+            String resolvedType, int flags, int userId);
+
+    List<ResolveInfo> queryIntentContentProviders(in Intent intent,
             String resolvedType, int flags, int userId);
 
     /**
@@ -215,6 +219,12 @@ interface IPackageManager {
 
     void resetPreferredActivities(int userId);
 
+    ResolveInfo getLastChosenActivity(in Intent intent,
+            String resolvedType, int flags);
+
+    void setLastChosenActivity(in Intent intent, String resolvedType, int flags,
+            in IntentFilter filter, int match, in ComponentName activity);
+
     void addPreferredActivity(in IntentFilter filter, int match,
             in ComponentName[] set, in ComponentName activity, int userId);
 
@@ -225,7 +235,13 @@ interface IPackageManager {
 
     int getPreferredActivities(out List<IntentFilter> outFilters,
             out List<ComponentName> outActivities, String packageName);
-    
+
+    /**
+     * Report the set of 'Home' activity candidates, plus (if any) which of them
+     * is the current "always use this one" setting.
+     */
+     ComponentName getHomeActivities(out List<ResolveInfo> outHomeCandidates);
+
     /**
      * As per {@link android.content.pm.PackageManager#setComponentEnabledSetting}.
      */
@@ -400,4 +416,7 @@ interface IPackageManager {
 
     /** Reflects current DeviceStorageMonitorService state */
     boolean isStorageLow();
+
+    boolean setApplicationBlockedSettingAsUser(String packageName, boolean blocked, int userId);
+    boolean getApplicationBlockedSettingAsUser(String packageName, int userId);
 }

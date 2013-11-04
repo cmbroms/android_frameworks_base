@@ -220,11 +220,6 @@ public class ChooseTypeAndAccountActivity extends Activity
             // If there are no relevant accounts and only one relevant account type go directly to
             // add account. Otherwise let the user choose.
             if (mAccounts.isEmpty()) {
-                if (mDisallowAddAccounts) {
-                    setContentView(R.layout.app_not_authorized);
-                    setTitle(R.string.error_message_title);
-                    return;
-                }
                 if (mSetOfRelevantAccountTypes.size() == 1) {
                     runAddAccountForAuthenticator(mSetOfRelevantAccountTypes.iterator().next());
                 } else {

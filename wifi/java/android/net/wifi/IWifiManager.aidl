@@ -16,10 +16,11 @@
 
 package android.net.wifi;
 
-import android.net.wifi.WifiInfo;
+import android.net.wifi.BatchedScanResult;
+import android.net.wifi.BatchedScanSettings;
 import android.net.wifi.WifiConfiguration;
+import android.net.wifi.WifiInfo;
 import android.net.wifi.ScanResult;
-import android.net.wifi.WifiChannel;
 import android.net.DhcpInfo;
 
 import android.os.Messenger;
@@ -44,7 +45,7 @@ interface IWifiManager
 
     boolean pingSupplicant();
 
-    void startScan();
+    void startScan(in WorkSource ws);
 
     List<ScanResult> getScanResults(String callingPackage);
 
@@ -62,17 +63,11 @@ interface IWifiManager
 
     void setCountryCode(String country, boolean persist);
 
-    String getCountryCode();
-
     void setFrequencyBand(int band, boolean persist);
 
     int getFrequencyBand();
 
     boolean isDualBandSupported();
-
-    boolean isIbssSupported();
-
-    List<WifiChannel> getSupportedChannels();
 
     boolean saveConfiguration();
 
@@ -117,5 +112,19 @@ interface IWifiManager
     String getConfigFile();
 
     void captivePortalCheckComplete();
+
+    void enableTdls(String remoteIPAddress, boolean enable);
+
+    void enableTdlsWithMacAddress(String remoteMacAddress, boolean enable);
+
+    boolean requestBatchedScan(in BatchedScanSettings requested, IBinder binder);
+
+    void stopBatchedScan(in BatchedScanSettings requested);
+
+    List<BatchedScanResult> getBatchedScanResults(String callingPackage);
+
+    boolean isBatchedScanSupported();
+
+    void pollBatchedScan();
 }
 

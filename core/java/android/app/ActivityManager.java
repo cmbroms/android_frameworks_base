@@ -1,6 +1,5 @@
 /*
  * Copyright (C) 2007 The Android Open Source Project
- * This code has been modified.  Portions copyright (C) 2010, T-Mobile USA, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -33,7 +32,6 @@ import android.content.pm.ConfigurationInfo;
 import android.content.pm.IPackageDataObserver;
 import android.content.pm.PackageManager;
 import android.content.pm.UserInfo;
-import android.content.res.Configuration;
 import android.content.res.Resources;
 import android.graphics.Bitmap;
 import android.graphics.Rect;
@@ -51,7 +49,6 @@ import android.text.TextUtils;
 import android.util.DisplayMetrics;
 import android.util.Log;
 import android.util.Slog;
-import android.view.Display;
 
 import java.io.FileDescriptor;
 import java.io.FileOutputStream;
@@ -569,11 +566,6 @@ public class ActivityManager {
      * recent tasks that currently are not available to the user.
      */
     public static final int RECENT_IGNORE_UNAVAILABLE = 0x0002;
-
-    /**
-     * @hide
-     */
-    public static final int RECENT_DO_NOT_COUNT_EXCLUDED = 0x0004;
 
     /**
      * Return a list of the tasks that the user has recently launched, with
@@ -1860,16 +1852,6 @@ public class ActivityManager {
     public List<ApplicationInfo> getRunningExternalApplications() {
         try {
             return ActivityManagerNative.getDefault().getRunningExternalApplications();
-        } catch (RemoteException e) {
-            return null;
-        }
-    }
-    /**
-     * @hide
-     */
-    public Configuration getConfiguration() {
-        try {
-            return ActivityManagerNative.getDefault().getConfiguration();
         } catch (RemoteException e) {
             return null;
         }

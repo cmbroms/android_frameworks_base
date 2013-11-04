@@ -34,7 +34,6 @@ import android.os.Environment;
 import android.os.Environment.UserEnvironment;
 import android.os.FileUtils;
 import android.os.IBinder;
-import android.os.Parcel;
 import android.os.ParcelFileDescriptor;
 import android.os.Process;
 import android.os.RemoteException;
@@ -72,7 +71,7 @@ import libcore.io.ErrnoException;
 import libcore.io.IoUtils;
 import libcore.io.Libcore;
 import libcore.io.Streams;
-import libcore.io.StructStatFs;
+import libcore.io.StructStatVfs;
 
 /*
  * This service copies a downloaded apk to a file passed in as
@@ -147,6 +146,8 @@ public class DefaultContainerService extends IntentService {
                 Slog.e(TAG, "Could not copy URI " + packageURI.toString() + " Security: "
                                 + e.getMessage());
                 return PackageManager.INSTALL_FAILED_INVALID_APK;
+            } finally {
+                IoUtils.closeQuietly(autoOut);
             }
         }
 
@@ -240,46 +241,12 @@ public class DefaultContainerService extends IntentService {
             }
         }
 
-        /**
-         * List content of the directory and return as marshalled Parcel.
-         * Used for calculating misc size in Settings -> Storage
-         */
-        @Override
-        public byte[] listDirectory(String path) throws RemoteException {
-            Process.setThreadPriority(Process.THREAD_PRIORITY_BACKGROUND);
-
-            final File directory = new File(path);
-            final File[] files = directory.listFiles();
-            final Parcel out = Parcel.obtain();
-
-            if (files == null) {
-                out.writeInt(0);
-            }
-            else {
-                out.writeInt(files.length);
-                for (final File file : files) {
-                    out.writeString(file.getAbsolutePath());
-                    out.writeString(file.getName());
-                    out.writeInt(file.isDirectory() ? 1 : 0);
-                    if (file.isFile()) {
-                        out.writeInt(1);
-                        out.writeLong(file.length());
-                    }
-                    else {
-                        out.writeInt(0);
-                    }
-                }
-            }
-
-            return out.marshall();
-        }
-
         @Override
         public long[] getFileSystemStats(String path) {
             Process.setThreadPriority(Process.THREAD_PRIORITY_BACKGROUND);
 
             try {
-                final StructStatFs stat = Libcore.os.statfs(path);
+                final StructStatVfs stat = Libcore.os.statvfs(path);
                 final long totalSize = stat.f_blocks * stat.f_bsize;
                 final long availSize = stat.f_bavail * stat.f_bsize;
                 return new long[] { totalSize, availSize };
@@ -295,17 +262,6 @@ public class DefaultContainerService extends IntentService {
             final File directory = new File(path);
             if (directory.exists() && directory.isDirectory()) {
                 eraseFiles(directory);
-            }
-        }
-
-        // Same as clearDirectory, but also work for files
-        @Override
-        public void deleteFile(String path) throws RemoteException {
-            Process.setThreadPriority(Process.THREAD_PRIORITY_BACKGROUND);
-
-            final File file = new File(path);
-            if (file.exists()) {
-                eraseFiles(file);
             }
         }
 
@@ -339,14 +295,20 @@ public class DefaultContainerService extends IntentService {
             try {
                 while ((item = pm.nextPackageToClean(item)) != null) {
                     final UserEnvironment userEnv = new UserEnvironment(item.userId);
-                    eraseFiles(userEnv.getExternalStorageAppDataDirectory(item.packageName));
-                    eraseFiles(userEnv.getExternalStorageAppMediaDirectory(item.packageName));
+                    eraseFiles(userEnv.buildExternalStorageAppDataDirs(item.packageName));
+                    eraseFiles(userEnv.buildExternalStorageAppMediaDirs(item.packageName));
                     if (item.andCode) {
-                        eraseFiles(userEnv.getExternalStorageAppObbDirectory(item.packageName));
+                        eraseFiles(userEnv.buildExternalStorageAppObbDirs(item.packageName));
                     }
                 }
             } catch (RemoteException e) {
             }
+        }
+    }
+
+    void eraseFiles(File[] paths) {
+        for (File path : paths) {
+            eraseFiles(path);
         }
     }
 
@@ -854,7 +816,7 @@ public class DefaultContainerService extends IntentService {
         if (Environment.MEDIA_MOUNTED.equals(Environment.getExternalStorageState())) {
             final StatFs sdStats = new StatFs(Environment.getExternalStorageDirectory().getPath());
             final int blocksToMb = (1 << 20) / sdStats.getBlockSize();
-            availSdMb = sdStats.getAvailableBlocks() / blocksToMb;
+            availSdMb = sdStats.getAvailableBlocks() * blocksToMb;
         } else {
             availSdMb = -1;
         }

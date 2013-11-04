@@ -1,6 +1,5 @@
 /*
  * Copyright (C) 2012 The Android Open Source Project
- * Copyright (C) 2013 The CyanogenMod Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,7 +20,7 @@ import android.hardware.display.IDisplayManagerCallback;
 import android.hardware.display.WifiDisplay;
 import android.hardware.display.WifiDisplayStatus;
 import android.view.DisplayInfo;
-import android.hardware.display.IRemoteDisplayAdapter;
+import android.view.Surface;
 
 /** @hide */
 interface IDisplayManager {
@@ -49,5 +48,17 @@ interface IDisplayManager {
     // No permissions required.
     WifiDisplayStatus getWifiDisplayStatus();
 
-    IRemoteDisplayAdapter getRemoteDisplayAdapter();
+    // Requires CAPTURE_VIDEO_OUTPUT or CAPTURE_SECURE_VIDEO_OUTPUT for certain
+    // combinations of flags.
+    int createVirtualDisplay(IBinder token, String packageName,
+            String name, int width, int height, int densityDpi, in Surface surface, int flags);
+
+    // No permissions required but must be same Uid as the creator.
+    void releaseVirtualDisplay(in IBinder token);
+
+    // Requires CONFIGURE_WIFI_DISPLAY permission.
+    void pauseWifiDisplay();
+
+    // Requires CONFIGURE_WIFI_DISPLAY permission.
+    void resumeWifiDisplay();
 }

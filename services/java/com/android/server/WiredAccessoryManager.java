@@ -44,6 +44,7 @@ import java.io.FileReader;
 import java.io.FileNotFoundException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * <p>WiredAccessoryManager monitors for a wired headset on the main board or dock using
@@ -65,7 +66,6 @@ final class WiredAccessoryManager implements WiredAccessoryCallbacks {
 
     private static final String NAME_H2W = "h2w";
     private static final String NAME_USB_AUDIO = "usb_audio";
-    private static final String NAME_EMU_AUDIO = "semu_audio";
     private static final String NAME_HDMI_AUDIO = "hdmi_audio";
     private static final String NAME_HDMI = "hdmi";
 
@@ -301,8 +301,7 @@ final class WiredAccessoryManager implements WiredAccessoryCallbacks {
                         FileReader file = new FileReader(uei.getSwitchStatePath());
                         int len = file.read(buffer, 0, 1024);
                         file.close();
-                        curState = validateSwitchState(
-                                Integer.valueOf((new String(buffer, 0, len)).trim()));
+                        curState = Integer.valueOf((new String(buffer, 0, len)).trim());
 
                         if (curState > 0) {
                             updateStateLocked(uei.getDevPath(), uei.getDevName(), curState);
@@ -317,21 +316,12 @@ final class WiredAccessoryManager implements WiredAccessoryCallbacks {
             }
 
             // At any given time accessories could be inserted
-            // one on the board, one on the dock, one on the
-            // samsung dock and one on HDMI:
-            // observe all UEVENTs that have valid switch supported
-            // by the Kernel
+            // one on the board, one on the dock and one on HDMI:
+            // observe three UEVENTs
             for (int i = 0; i < mUEventInfo.size(); ++i) {
                 UEventInfo uei = mUEventInfo.get(i);
                 startObserving("DEVPATH="+uei.getDevPath());
             }
-        }
-
-        private int validateSwitchState(int state) {
-            // Some drivers, namely HTC headset ones, add additional bits to
-            // the switch state. As we only are able to deal with the states
-            // 0, 1 and 2, mask out all the other bits
-            return state & 0x3;
         }
 
         private List<UEventInfo> makeObservedUEventList() {
@@ -354,22 +344,6 @@ final class WiredAccessoryManager implements WiredAccessoryCallbacks {
                 retVal.add(uei);
             } else {
                 Slog.w(TAG, "This kernel does not have usb audio support");
-            }
-
-            // Monitor Motorola EMU audio jack
-            uei = new UEventInfo(NAME_EMU_AUDIO, BIT_USB_HEADSET_ANLG, 0);
-            if (uei.checkSwitchExists()) {
-                retVal.add(uei);
-            } else {
-                Slog.w(TAG, "This kernel does not have Motorola EMU audio support");
-            }
-
-            // Monitor Samsung USB audio
-            uei = new UEventInfo("dock", BIT_USB_HEADSET_DGTL, BIT_USB_HEADSET_ANLG);
-            if (uei.checkSwitchExists()) {
-                retVal.add(uei);
-            } else {
-                Slog.w(TAG, "This kernel does not have samsung usb dock audio support");
             }
 
             // Monitor HDMI
@@ -399,16 +373,10 @@ final class WiredAccessoryManager implements WiredAccessoryCallbacks {
         public void onUEvent(UEventObserver.UEvent event) {
             if (LOG) Slog.v(TAG, "Headset UEVENT: " + event.toString());
 
-            int state = validateSwitchState(Integer.parseInt(event.get("SWITCH_STATE")));
             try {
                 String devPath = event.get("DEVPATH");
                 String name = event.get("SWITCH_NAME");
-                if (name.equals("CAR") || name.equals("DESK")) {
-                    // Motorola dock - ignore this event and don't change
-                    // the audio routing just because we're docked.
-                    // Let only the dock emu audio jack sensing do that.
-                    return;
-                }
+                int state = Integer.parseInt(event.get("SWITCH_STATE"));
                 synchronized (mLock) {
                     updateStateLocked(devPath, name, state);
                 }
@@ -441,11 +409,11 @@ final class WiredAccessoryManager implements WiredAccessoryCallbacks {
             public String getDevName() { return mDevName; }
 
             public String getDevPath() {
-                return String.format("/devices/virtual/switch/%s", mDevName);
+                return String.format(Locale.US, "/devices/virtual/switch/%s", mDevName);
             }
 
             public String getSwitchStatePath() {
-                return String.format("/sys/class/switch/%s/state", mDevName);
+                return String.format(Locale.US, "/sys/class/switch/%s/state", mDevName);
             }
 
             public boolean checkSwitchExists() {

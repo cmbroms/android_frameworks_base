@@ -1,8 +1,5 @@
 /*
  * Copyright (C) 2011 The Android Open Source Project
- * Copyright (c) 2012-2013 The Linux Foundation. All rights reserved.
- *
- * Not a Contribution.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,23 +16,17 @@
 
 package com.android.systemui.statusbar;
 
-import android.content.ContentResolver;
 import android.content.Context;
-import android.database.ContentObserver;
-import android.os.Handler;
-import android.os.UserHandle;
-import android.provider.Settings;
 import android.util.AttributeSet;
-import android.util.Slog;
+import android.util.Log;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.accessibility.AccessibilityEvent;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 
-import com.android.systemui.statusbar.policy.NetworkController;
-
 import com.android.systemui.R;
+import com.android.systemui.statusbar.policy.NetworkController;
 
 // Intimately tied to the design of res/layout/signal_cluster_view.xml
 public class SignalClusterView
@@ -46,48 +37,18 @@ public class SignalClusterView
     static final String TAG = "SignalClusterView";
 
     NetworkController mNC;
-    private SettingsObserver mObserver;
 
-    private static final int SIGNAL_CLUSTER_STYLE_NORMAL = 0;
-
-    private int mSignalClusterStyle;
     private boolean mWifiVisible = false;
-    private int mWifiStrengthId = 0, mWifiActivityId = 0;
+    private int mWifiStrengthId = 0;
     private boolean mMobileVisible = false;
-    private int mMobileStrengthId = 0, mMobileActivityId = 0;
-    private int mMobileTypeId = 0, mNoSimIconId = 0;
+    private int mMobileStrengthId = 0, mMobileTypeId = 0;
     private boolean mIsAirplaneMode = false;
     private int mAirplaneIconId = 0;
-    private boolean mEtherVisible = false;
-    private int mEtherIconId = 0;
-    private String mWifiDescription, mMobileDescription, mMobileTypeDescription, mEtherDescription;
+    private String mWifiDescription, mMobileDescription, mMobileTypeDescription;
 
     ViewGroup mWifiGroup, mMobileGroup;
-    ImageView mWifi, mMobile, mWifiActivity, mMobileActivity, mMobileType, mAirplane, mEther, mNoSimSlot;
+    ImageView mWifi, mMobile, mMobileType, mAirplane;
     View mSpacer;
-
-    Handler mHandler;
-
-    class SettingsObserver extends ContentObserver {
-        SettingsObserver(Handler handler) {
-            super(handler);
-        }
-
-        void observe() {
-            ContentResolver resolver = mContext.getContentResolver();
-            resolver.registerContentObserver(Settings.System.getUriFor(
-                    Settings.System.STATUS_BAR_SIGNAL_TEXT), false, this);
-        }
-
-        void unobserve() {
-            mContext.getContentResolver().unregisterContentObserver(this);
-        }
-
-        @Override
-        public void onChange(boolean selfChange) {
-            updateSettings();
-        }
-    }
 
     public SignalClusterView(Context context) {
         this(context, null);
@@ -99,14 +60,10 @@ public class SignalClusterView
 
     public SignalClusterView(Context context, AttributeSet attrs, int defStyle) {
         super(context, attrs, defStyle);
-
-        mHandler = new Handler();
-
-        mObserver = new SettingsObserver(mHandler);
     }
 
     public void setNetworkController(NetworkController nc) {
-        if (DEBUG) Slog.d(TAG, "NetworkController=" + nc);
+        if (DEBUG) Log.d(TAG, "NetworkController=" + nc);
         mNC = nc;
     }
 
@@ -114,64 +71,47 @@ public class SignalClusterView
     protected void onAttachedToWindow() {
         super.onAttachedToWindow();
 
-        mObserver.observe();
-
         mWifiGroup      = (ViewGroup) findViewById(R.id.wifi_combo);
         mWifi           = (ImageView) findViewById(R.id.wifi_signal);
-        mWifiActivity   = (ImageView) findViewById(R.id.wifi_inout);
         mMobileGroup    = (ViewGroup) findViewById(R.id.mobile_combo);
         mMobile         = (ImageView) findViewById(R.id.mobile_signal);
-        mMobileActivity = (ImageView) findViewById(R.id.mobile_inout);
         mMobileType     = (ImageView) findViewById(R.id.mobile_type);
-        mNoSimSlot      = (ImageView) findViewById(R.id.no_sim);
         mSpacer         =             findViewById(R.id.spacer);
         mAirplane       = (ImageView) findViewById(R.id.airplane);
-        mEther          = (ImageView) findViewById(R.id.ethernet);
 
         apply();
     }
 
     @Override
     protected void onDetachedFromWindow() {
-        mObserver.unobserve();
-
         mWifiGroup      = null;
         mWifi           = null;
-        mWifiActivity   = null;
         mMobileGroup    = null;
         mMobile         = null;
-        mMobileActivity = null;
         mMobileType     = null;
-        mNoSimSlot      = null;
         mSpacer         = null;
         mAirplane       = null;
-        mEther          = null;
 
         super.onDetachedFromWindow();
     }
 
     @Override
-    public void setWifiIndicators(boolean visible, int strengthIcon, int activityIcon,
-            String contentDescription) {
+    public void setWifiIndicators(boolean visible, int strengthIcon, String contentDescription) {
         mWifiVisible = visible;
         mWifiStrengthId = strengthIcon;
-        mWifiActivityId = activityIcon;
         mWifiDescription = contentDescription;
 
         apply();
     }
 
     @Override
-    public void setMobileDataIndicators(boolean visible, int strengthIcon, int activityIcon,
-            int typeIcon, String contentDescription, String typeContentDescription,
-            int noSimIcon) {
+    public void setMobileDataIndicators(boolean visible, int strengthIcon,
+            int typeIcon, String contentDescription, String typeContentDescription) {
         mMobileVisible = visible;
         mMobileStrengthId = strengthIcon;
-        mMobileActivityId = activityIcon;
         mMobileTypeId = typeIcon;
         mMobileDescription = contentDescription;
         mMobileTypeDescription = typeContentDescription;
-        mNoSimIconId = noSimIcon;
 
         apply();
     }
@@ -185,21 +125,12 @@ public class SignalClusterView
     }
 
     @Override
-    public void setEtherIndicators(boolean visible, int etherIcon, String contentDescription) {
-        mEtherVisible = visible;
-        mEtherIconId = etherIcon;
-        mEtherDescription = contentDescription;
-
-        apply();
-    }
-
-    @Override
     public boolean dispatchPopulateAccessibilityEvent(AccessibilityEvent event) {
         // Standard group layout onPopulateAccessibilityEvent() implementations
         // ignore content description, so populate manually
-        if (mWifiVisible && mWifiGroup.getContentDescription() != null)
+        if (mWifiVisible && mWifiGroup != null && mWifiGroup.getContentDescription() != null)
             event.getText().add(mWifiGroup.getContentDescription());
-        if (mMobileVisible && mMobileGroup.getContentDescription() != null)
+        if (mMobileVisible && mMobileGroup != null && mMobileGroup.getContentDescription() != null)
             event.getText().add(mMobileGroup.getContentDescription());
         return super.dispatchPopulateAccessibilityEvent(event);
     }
@@ -211,16 +142,11 @@ public class SignalClusterView
         if (mWifi != null) {
             mWifi.setImageDrawable(null);
         }
-        if (mWifiActivity != null) {
-            mWifiActivity.setImageDrawable(null);
-        }
 
         if (mMobile != null) {
             mMobile.setImageDrawable(null);
         }
-        if (mMobileActivity != null) {
-            mMobileActivity.setImageDrawable(null);
-        }
+
         if (mMobileType != null) {
             mMobileType.setImageDrawable(null);
         }
@@ -238,7 +164,6 @@ public class SignalClusterView
 
         if (mWifiVisible) {
             mWifi.setImageResource(mWifiStrengthId);
-            mWifiActivity.setImageResource(mWifiActivityId);
 
             mWifiGroup.setContentDescription(mWifiDescription);
             mWifiGroup.setVisibility(View.VISIBLE);
@@ -246,19 +171,17 @@ public class SignalClusterView
             mWifiGroup.setVisibility(View.GONE);
         }
 
-        if (DEBUG) Slog.d(TAG,
-                String.format("wifi: %s sig=%d act=%d",
+        if (DEBUG) Log.d(TAG,
+                String.format("wifi: %s sig=%d",
                     (mWifiVisible ? "VISIBLE" : "GONE"),
-                    mWifiStrengthId, mWifiActivityId));
+                    mWifiStrengthId));
 
         if (mMobileVisible && !mIsAirplaneMode) {
             mMobile.setImageResource(mMobileStrengthId);
-            mMobileActivity.setImageResource(mMobileActivityId);
             mMobileType.setImageResource(mMobileTypeId);
 
             mMobileGroup.setContentDescription(mMobileTypeDescription + " " + mMobileDescription);
             mMobileGroup.setVisibility(View.VISIBLE);
-            mNoSimSlot.setImageResource(mNoSimIconId);
         } else {
             mMobileGroup.setVisibility(View.GONE);
         }
@@ -270,45 +193,19 @@ public class SignalClusterView
             mAirplane.setVisibility(View.GONE);
         }
 
-        if (mEtherVisible) {
-            mEther.setVisibility(View.VISIBLE);
-            mEther.setImageResource(mEtherIconId);
-            mEther.setContentDescription(mEtherDescription);
-        } else {
-            mEther.setVisibility(View.GONE);
-        }
-
-        if (mMobileVisible && mWifiVisible &&
-                ((mIsAirplaneMode) || (mNoSimIconId != 0))) {
+        if (mMobileVisible && mWifiVisible && mIsAirplaneMode) {
             mSpacer.setVisibility(View.INVISIBLE);
         } else {
             mSpacer.setVisibility(View.GONE);
         }
 
-        if (DEBUG) Slog.d(TAG,
-                String.format("mobile: %s sig=%d act=%d typ=%d",
+        if (DEBUG) Log.d(TAG,
+                String.format("mobile: %s sig=%d typ=%d",
                     (mMobileVisible ? "VISIBLE" : "GONE"),
-                    mMobileStrengthId, mMobileActivityId, mMobileTypeId));
+                    mMobileStrengthId, mMobileTypeId));
 
         mMobileType.setVisibility(
                 !mWifiVisible ? View.VISIBLE : View.GONE);
-
-        updateSettings();
-    }
-
-    private void updateSignalClusterStyle() {
-        if (!mIsAirplaneMode) {
-            mMobileGroup.setVisibility(mSignalClusterStyle !=
-                    SIGNAL_CLUSTER_STYLE_NORMAL ? View.GONE : View.VISIBLE);
-        }
-    }
-
-    public void updateSettings() {
-        ContentResolver resolver = mContext.getContentResolver();
-        mSignalClusterStyle = Settings.System.getIntForUser(resolver,
-                Settings.System.STATUS_BAR_SIGNAL_TEXT, SIGNAL_CLUSTER_STYLE_NORMAL,
-                UserHandle.USER_CURRENT);
-        updateSignalClusterStyle();
     }
 }
 

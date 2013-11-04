@@ -19,6 +19,7 @@ package com.android.server;
 import static android.content.pm.PackageManager.PERMISSION_GRANTED;
 
 import android.Manifest;
+import android.app.AppOpsManager;
 import android.content.BroadcastReceiver;
 import android.content.ComponentName;
 import android.content.Context;
@@ -189,6 +190,8 @@ class MountService extends IMountService.Stub
 
     /** When defined, base template for user-specific {@link StorageVolume}. */
     private StorageVolume mEmulatedTemplate;
+
+    // TODO: separate storage volumes on per-user basis
 
     @GuardedBy("mVolumesLock")
     private final ArrayList<StorageVolume> mVolumes = Lists.newArrayList();
@@ -411,13 +414,6 @@ class MountService extends IMountService.Stub
                 case H_UNMOUNT_PM_UPDATE: {
                     if (DEBUG_UNMOUNT) Slog.i(TAG, "H_UNMOUNT_PM_UPDATE");
                     UnmountCallBack ucb = (UnmountCallBack) msg.obj;
-                    if (!mUpdatingStatus && !isPrimaryStorage(ucb.path)) {
-                        // If PM isn't already updating, and this isn't an ASEC
-                        // mount, then go ahead and do the unmount immediately.
-                        if (DEBUG_UNMOUNT) Slog.i(TAG, " skipping PackageManager for " + ucb.path);
-                        ucb.handleFinished();
-                        break;
-                    }
                     mForceUnmounts.add(ucb);
                     if (DEBUG_UNMOUNT) Slog.i(TAG, " registered = " + mUpdatingStatus);
                     // Register only if needed.
@@ -499,7 +495,6 @@ class MountService extends IMountService.Stub
         }
     };
 
-    private final HandlerThread mHandlerThread;
     private final Handler mHandler;
 
     void waitForAsecScan() {
@@ -835,7 +830,7 @@ class MountService extends IMountService.Stub
             }
 
             if (code == VoldResponseCode.VolumeDiskInserted) {
-                new Thread() {
+                new Thread("MountService#VolumeDiskInserted") {
                     @Override
                     public void run() {
                         try {
@@ -1033,9 +1028,7 @@ class MountService extends IMountService.Stub
         Runtime.getRuntime().gc();
 
         // Redundant probably. But no harm in updating state again.
-        if (isPrimaryStorage(path)) {
-            mPms.updateExternalMediaStatus(false, false);
-        }
+        mPms.updateExternalMediaStatus(false, false);
         try {
             final Command cmd = new Command("volume", "unmount", path);
             if (removeEncryption) {
@@ -1117,31 +1110,24 @@ class MountService extends IMountService.Stub
             mSendUmsConnectedOnBoot = avail;
         }
 
-        final ArrayList<String> volumes = getShareableVolumes();
-        boolean mediaShared = false;
-        for (String path : volumes) {
-            if (getVolumeState(path).equals(Environment.MEDIA_SHARED))
-                mediaShared = true;
-        }
-        if (avail == false && mediaShared) {
+        final StorageVolume primary = getPrimaryPhysicalVolume();
+        if (avail == false && primary != null
+                && Environment.MEDIA_SHARED.equals(getVolumeState(primary.getPath()))) {
+            final String path = primary.getPath();
             /*
              * USB mass storage disconnected while enabled
              */
-            new Thread() {
+            new Thread("MountService#AvailabilityChange") {
                 @Override
                 public void run() {
                     try {
                         int rc;
                         Slog.w(TAG, "Disabling UMS after cable disconnect");
-                        for (String path : volumes) {
-                            if (getVolumeState(path).equals(Environment.MEDIA_SHARED)) {
-                                doShareUnshareVolume(path, "ums", false);
-                                if ((rc = doMountVolume(path)) != StorageResultCode.OperationSucceeded) {
-                                    Slog.e(TAG, String.format(
-                                            "Failed to remount {%s} on UMS enabled-disconnect (%d)",
-                                                    path, rc));
-                                }
-                            }
+                        doShareUnshareVolume(path, "ums", false);
+                        if ((rc = doMountVolume(path)) != StorageResultCode.OperationSucceeded) {
+                            Slog.e(TAG, String.format(
+                                    "Failed to remount {%s} on UMS enabled-disconnect (%d)",
+                                            path, rc));
                         }
                     } catch (Exception ex) {
                         Slog.w(TAG, "Failed to mount media on UMS enabled-disconnect", ex);
@@ -1222,9 +1208,9 @@ class MountService extends IMountService.Stub
                             " allowMassStorage: " + allowMassStorage +
                             " maxFileSize: " + maxFileSize);
 
-                    if (emulated && primary) {
-                        // For devices with emulated primary storage,
-                        // we create separate volumes for each known user.
+                    if (emulated) {
+                        // For devices with emulated storage, we create separate
+                        // volumes for each known user.
                         mEmulatedTemplate = new StorageVolume(null, descriptionId, true, false,
                                 true, mtpReserve, false, maxFileSize, null);
 
@@ -1241,6 +1227,9 @@ class MountService extends IMountService.Stub
                                     descriptionId, primary, removable, emulated, mtpReserve,
                                     allowMassStorage, maxFileSize, null);
                             addVolumeLocked(volume);
+
+                            // Until we hear otherwise, treat as unmounted
+                            mVolumeStates.put(volume.getPath(), Environment.MEDIA_UNMOUNTED);
                         }
                     }
 
@@ -1252,11 +1241,11 @@ class MountService extends IMountService.Stub
         } catch (IOException e) {
             throw new RuntimeException(e);
         } finally {
-            // Compute storage ID for each physical volume;
-            // Primary emulated storage is always 0 when defined.
+            // Compute storage ID for each physical volume; emulated storage is
+            // always 0 when defined.
             int index = isExternalStorageEmulated() ? 1 : 0;
             for (StorageVolume volume : mVolumes) {
-                if (!(volume.isEmulated() && volume.isPrimary())) {
+                if (!volume.isEmulated()) {
                     volume.setStorageId(index++);
                 }
             }
@@ -1330,9 +1319,9 @@ class MountService extends IMountService.Stub
         // XXX: This will go away soon in favor of IMountServiceObserver
         mPms = (PackageManagerService) ServiceManager.getService("package");
 
-        mHandlerThread = new HandlerThread("MountService");
-        mHandlerThread.start();
-        mHandler = new MountServiceHandler(mHandlerThread.getLooper());
+        HandlerThread hthread = new HandlerThread(TAG);
+        hthread.start();
+        mHandler = new MountServiceHandler(hthread.getLooper());
 
         // Watch for user changes
         final IntentFilter userFilter = new IntentFilter();
@@ -1354,7 +1343,7 @@ class MountService extends IMountService.Stub
                 idleMaintenanceFilter, null, mHandler);
 
         // Add OBB Action Handler to MountService thread.
-        mObbActionHandler = new ObbActionHandler(mHandlerThread.getLooper());
+        mObbActionHandler = new ObbActionHandler(IoThread.get().getLooper());
 
         /*
          * Create the connection to vold with a maximum queue of twice the
@@ -1486,30 +1475,6 @@ class MountService extends IMountService.Stub
         }
     }
 
-    private boolean isPrimaryStorage(String path) {
-        synchronized (mVolumesLock) {
-            for (StorageVolume volume : mVolumes) {
-                if (volume.isPrimary() && volume.getPath().equals(path)) {
-                    return true;
-                }
-            }
-            return false;
-        }
-    }
-
-    private ArrayList<String> getShareableVolumes() {
-        // Sharable volumes have android:allowMassStorage="true" in storage_list.xml
-        ArrayList<String> volumesToMount = new ArrayList<String>();
-        synchronized (mVolumesLock) {
-            for (StorageVolume v : mVolumes) {
-                if (v.allowMassStorage()) {
-                    volumesToMount.add(v.getPath());
-                }
-            }
-        }
-        return volumesToMount;
-    }
-
     public void setUsbMassStorageEnabled(boolean enable) {
         waitForReady();
         validatePermission(android.Manifest.permission.MOUNT_UNMOUNT_FILESYSTEMS);
@@ -1519,34 +1484,33 @@ class MountService extends IMountService.Stub
 
         // TODO: Add support for multiple share methods
 
-        for (String path : getShareableVolumes()) {
-            /*
-             * If the volume is mounted and we're enabling then unmount it
-             */
-            String vs = getVolumeState(path);
-            String method = "ums";
-            if (enable && vs.equals(Environment.MEDIA_MOUNTED)) {
-                // Override for isUsbMassStorageEnabled()
-                setUmsEnabling(enable);
-                UmsEnableCallBack umscb = new UmsEnableCallBack(path, method, true);
-                mHandler.sendMessage(mHandler.obtainMessage(H_UNMOUNT_PM_UPDATE, umscb));
-                // Clear override
-                setUmsEnabling(false);
-            }
-            /*
-             * If we disabled UMS then mount the volume
-             */
-            if (!enable) {
-                doShareUnshareVolume(path, method, enable);
-                if (doMountVolume(path) != StorageResultCode.OperationSucceeded) {
-                    Slog.e(TAG, "Failed to remount " + path +
-                            " after disabling share method " + method);
-                    /*
-                     * Even though the mount failed, the unshare didn't so don't indicate an error.
-                     * The mountVolume() call will have set the storage state and sent the necessary
-                     * broadcasts.
-                     */
-                }
+        /*
+         * If the volume is mounted and we're enabling then unmount it
+         */
+        String path = primary.getPath();
+        String vs = getVolumeState(path);
+        String method = "ums";
+        if (enable && vs.equals(Environment.MEDIA_MOUNTED)) {
+            // Override for isUsbMassStorageEnabled()
+            setUmsEnabling(enable);
+            UmsEnableCallBack umscb = new UmsEnableCallBack(path, method, true);
+            mHandler.sendMessage(mHandler.obtainMessage(H_UNMOUNT_PM_UPDATE, umscb));
+            // Clear override
+            setUmsEnabling(false);
+        }
+        /*
+         * If we disabled UMS then mount the volume
+         */
+        if (!enable) {
+            doShareUnshareVolume(path, method, enable);
+            if (doMountVolume(path) != StorageResultCode.OperationSucceeded) {
+                Slog.e(TAG, "Failed to remount " + path +
+                        " after disabling share method " + method);
+                /*
+                 * Even though the mount failed, the unshare didn't so don't indicate an error.
+                 * The mountVolume() call will have set the storage state and sent the necessary
+                 * broadcasts.
+                 */
             }
         }
     }
@@ -1554,12 +1518,12 @@ class MountService extends IMountService.Stub
     public boolean isUsbMassStorageEnabled() {
         waitForReady();
 
-        for (String path : getShareableVolumes()) {
-            if (doGetVolumeShared(path, "ums"))
-                return true;
+        final StorageVolume primary = getPrimaryPhysicalVolume();
+        if (primary != null) {
+            return doGetVolumeShared(primary.getPath(), "ums");
+        } else {
+            return false;
         }
-        // no volume is shared
-        return false;
     }
 
     /**
@@ -2168,6 +2132,89 @@ class MountService extends IMountService.Stub
     }
 
     @Override
+    public int mkdirs(String callingPkg, String appPath) {
+        final int userId = UserHandle.getUserId(Binder.getCallingUid());
+        final UserEnvironment userEnv = new UserEnvironment(userId);
+
+        // Validate that reported package name belongs to caller
+        final AppOpsManager appOps = (AppOpsManager) mContext.getSystemService(
+                Context.APP_OPS_SERVICE);
+        appOps.checkPackage(Binder.getCallingUid(), callingPkg);
+
+        try {
+            appPath = new File(appPath).getCanonicalPath();
+        } catch (IOException e) {
+            Slog.e(TAG, "Failed to resolve " + appPath + ": " + e);
+            return -1;
+        }
+
+        if (!appPath.endsWith("/")) {
+            appPath = appPath + "/";
+        }
+
+        // Try translating the app path into a vold path, but require that it
+        // belong to the calling package.
+        String voldPath = maybeTranslatePathForVold(appPath,
+                userEnv.buildExternalStorageAppDataDirs(callingPkg),
+                userEnv.buildExternalStorageAppDataDirsForVold(callingPkg));
+        if (voldPath != null) {
+            try {
+                mConnector.execute("volume", "mkdirs", voldPath);
+                return 0;
+            } catch (NativeDaemonConnectorException e) {
+                return e.getCode();
+            }
+        }
+
+        voldPath = maybeTranslatePathForVold(appPath,
+                userEnv.buildExternalStorageAppObbDirs(callingPkg),
+                userEnv.buildExternalStorageAppObbDirsForVold(callingPkg));
+        if (voldPath != null) {
+            try {
+                mConnector.execute("volume", "mkdirs", voldPath);
+                return 0;
+            } catch (NativeDaemonConnectorException e) {
+                return e.getCode();
+            }
+        }
+
+        throw new SecurityException("Invalid mkdirs path: " + appPath);
+    }
+
+    /**
+     * Translate the given path from an app-visible path to a vold-visible path,
+     * but only if it's under the given whitelisted paths.
+     *
+     * @param path a canonicalized app-visible path.
+     * @param appPaths list of app-visible paths that are allowed.
+     * @param voldPaths list of vold-visible paths directly corresponding to the
+     *            allowed app-visible paths argument.
+     * @return a vold-visible path representing the original path, or
+     *         {@code null} if the given path didn't have an app-to-vold
+     *         mapping.
+     */
+    @VisibleForTesting
+    public static String maybeTranslatePathForVold(
+            String path, File[] appPaths, File[] voldPaths) {
+        if (appPaths.length != voldPaths.length) {
+            throw new IllegalStateException("Paths must be 1:1 mapping");
+        }
+
+        for (int i = 0; i < appPaths.length; i++) {
+            final String appPath = appPaths[i].getAbsolutePath() + "/";
+            if (path.startsWith(appPath)) {
+                path = new File(voldPaths[i], path.substring(appPath.length()))
+                        .getAbsolutePath();
+                if (!path.endsWith("/")) {
+                    path = path + "/";
+                }
+                return path;
+            }
+        }
+        return null;
+    }
+
+    @Override
     public StorageVolume[] getVolumeList() {
         final int callingUserId = UserHandle.getCallingUserId();
         final boolean accessAll = (mContext.checkPermission(
@@ -2647,6 +2694,7 @@ class MountService extends IMountService.Stub
     @VisibleForTesting
     public static String buildObbPath(final String canonicalPath, int userId, boolean forVold) {
         // TODO: allow caller to provide Environment for full testing
+        // TODO: extend to support OBB mounts on secondary external storage
 
         // Only adjust paths when storage is emulated
         if (!Environment.isExternalStorageEmulated()) {
@@ -2659,10 +2707,10 @@ class MountService extends IMountService.Stub
         final UserEnvironment userEnv = new UserEnvironment(userId);
 
         // /storage/emulated/0
-        final String externalPath = userEnv.getExternalStorageDirectory().toString();
+        final String externalPath = userEnv.getExternalStorageDirectory().getAbsolutePath();
         // /storage/emulated_legacy
         final String legacyExternalPath = Environment.getLegacyExternalStorageDirectory()
-                .toString();
+                .getAbsolutePath();
 
         if (path.startsWith(externalPath)) {
             path = path.substring(externalPath.length() + 1);
@@ -2678,18 +2726,19 @@ class MountService extends IMountService.Stub
             path = path.substring(obbPath.length() + 1);
 
             if (forVold) {
-                return new File(Environment.getEmulatedStorageObbSource(), path).toString();
+                return new File(Environment.getEmulatedStorageObbSource(), path).getAbsolutePath();
             } else {
                 final UserEnvironment ownerEnv = new UserEnvironment(UserHandle.USER_OWNER);
-                return new File(ownerEnv.getExternalStorageObbDirectory(), path).toString();
+                return new File(ownerEnv.buildExternalStorageAndroidObbDirs()[0], path)
+                        .getAbsolutePath();
             }
         }
 
         // Handle normal external storage paths
         if (forVold) {
-            return new File(Environment.getEmulatedStorageSource(userId), path).toString();
+            return new File(Environment.getEmulatedStorageSource(userId), path).getAbsolutePath();
         } else {
-            return new File(userEnv.getExternalStorageDirectory(), path).toString();
+            return new File(userEnv.getExternalDirsForApp()[0], path).getAbsolutePath();
         }
     }
 
@@ -2735,6 +2784,7 @@ class MountService extends IMountService.Stub
                 final StorageVolume v = mVolumes.get(i);
                 pw.print("    ");
                 pw.println(v.toString());
+                pw.println("      state=" + mVolumeStates.get(v.getPath()));
             }
         }
 

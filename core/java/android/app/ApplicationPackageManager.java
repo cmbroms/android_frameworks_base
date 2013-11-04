@@ -51,6 +51,7 @@ import android.net.Uri;
 import android.os.Process;
 import android.os.RemoteException;
 import android.os.UserHandle;
+import android.util.ArrayMap;
 import android.util.Log;
 import android.view.Display;
 
@@ -448,19 +449,6 @@ final class ApplicationPackageManager extends PackageManager {
         }
     }
 
-    @Override
-    public List<PackageInfo> getInstalledThemePackages() {
-        // Returns a list of theme APKs.
-        ArrayList<PackageInfo> finalList = new ArrayList<PackageInfo>();
-        List<PackageInfo> installedPackagesList = getInstalledPackages(0);
-        for (PackageInfo pi : installedPackagesList) {
-            if (pi != null && pi.isThemeApk) {
-                finalList.add(pi);
-            }
-        }
-        return finalList;
-    }
-
     @SuppressWarnings("unchecked")
     @Override
     public List<ApplicationInfo> getInstalledApplications(int flags) {
@@ -594,6 +582,22 @@ final class ApplicationPackageManager extends PackageManager {
     @Override
     public List<ResolveInfo> queryIntentServices(Intent intent, int flags) {
         return queryIntentServicesAsUser(intent, flags, mContext.getUserId());
+    }
+
+    @Override
+    public List<ResolveInfo> queryIntentContentProvidersAsUser(
+            Intent intent, int flags, int userId) {
+        try {
+            return mPM.queryIntentContentProviders(intent,
+                    intent.resolveTypeIfNeeded(mContext.getContentResolver()), flags, userId);
+        } catch (RemoteException e) {
+            throw new RuntimeException("Package manager has died", e);
+        }
+    }
+
+    @Override
+    public List<ResolveInfo> queryIntentContentProviders(Intent intent, int flags) {
+        return queryIntentContentProvidersAsUser(intent, flags, mContext.getUserId());
     }
 
     @Override
@@ -872,26 +876,20 @@ final class ApplicationPackageManager extends PackageManager {
             boolean needCleanup = false;
             for (String ssp : pkgList) {
                 synchronized (sSync) {
-                    if (sIconCache.size() > 0) {
-                        Iterator<ResourceName> it = sIconCache.keySet().iterator();
-                        while (it.hasNext()) {
-                            ResourceName nm = it.next();
-                            if (nm.packageName.equals(ssp)) {
-                                //Log.i(TAG, "Removing cached drawable for " + nm);
-                                it.remove();
-                                needCleanup = true;
-                            }
+                    for (int i=sIconCache.size()-1; i>=0; i--) {
+                        ResourceName nm = sIconCache.keyAt(i);
+                        if (nm.packageName.equals(ssp)) {
+                            //Log.i(TAG, "Removing cached drawable for " + nm);
+                            sIconCache.removeAt(i);
+                            needCleanup = true;
                         }
                     }
-                    if (sStringCache.size() > 0) {
-                        Iterator<ResourceName> it = sStringCache.keySet().iterator();
-                        while (it.hasNext()) {
-                            ResourceName nm = it.next();
-                            if (nm.packageName.equals(ssp)) {
-                                //Log.i(TAG, "Removing cached string for " + nm);
-                                it.remove();
-                                needCleanup = true;
-                            }
+                    for (int i=sStringCache.size()-1; i>=0; i--) {
+                        ResourceName nm = sStringCache.keyAt(i);
+                        if (nm.packageName.equals(ssp)) {
+                            //Log.i(TAG, "Removing cached string for " + nm);
+                            sStringCache.removeAt(i);
+                            needCleanup = true;
                         }
                     }
                 }
@@ -1269,6 +1267,16 @@ final class ApplicationPackageManager extends PackageManager {
     }
 
     @Override
+    public ComponentName getHomeActivities(List<ResolveInfo> outActivities) {
+        try {
+            return mPM.getHomeActivities(outActivities);
+        } catch (RemoteException e) {
+            // Should never happen!
+        }
+        return null;
+    }
+
+    @Override
     public void setComponentEnabledSetting(ComponentName componentName,
                                            int newState, int flags) {
         try {
@@ -1293,7 +1301,7 @@ final class ApplicationPackageManager extends PackageManager {
                                              int newState, int flags) {
         try {
             mPM.setApplicationEnabledSetting(packageName, newState, flags,
-                    mContext.getUserId(), mContext.getBasePackageName());
+                    mContext.getUserId(), mContext.getOpPackageName());
         } catch (RemoteException e) {
             // Should never happen!
         }
@@ -1307,6 +1315,28 @@ final class ApplicationPackageManager extends PackageManager {
             // Should never happen!
         }
         return PackageManager.COMPONENT_ENABLED_STATE_DEFAULT;
+    }
+
+    @Override
+    public boolean setApplicationBlockedSettingAsUser(String packageName, boolean blocked,
+            UserHandle user) {
+        try {
+            return mPM.setApplicationBlockedSettingAsUser(packageName, blocked,
+                    user.getIdentifier());
+        } catch (RemoteException re) {
+            // Should never happen!
+        }
+        return false;
+    }
+
+    @Override
+    public boolean getApplicationBlockedSettingAsUser(String packageName, UserHandle user) {
+        try {
+            return mPM.getApplicationBlockedSettingAsUser(packageName, user.getIdentifier());
+        } catch (RemoteException re) {
+            // Should never happen!
+        }
+        return false;
     }
 
     /**
@@ -1326,8 +1356,8 @@ final class ApplicationPackageManager extends PackageManager {
     private final IPackageManager mPM;
 
     private static final Object sSync = new Object();
-    private static HashMap<ResourceName, WeakReference<Drawable.ConstantState>> sIconCache
-            = new HashMap<ResourceName, WeakReference<Drawable.ConstantState>>();
-    private static HashMap<ResourceName, WeakReference<CharSequence>> sStringCache
-            = new HashMap<ResourceName, WeakReference<CharSequence>>();
+    private static ArrayMap<ResourceName, WeakReference<Drawable.ConstantState>> sIconCache
+            = new ArrayMap<ResourceName, WeakReference<Drawable.ConstantState>>();
+    private static ArrayMap<ResourceName, WeakReference<CharSequence>> sStringCache
+            = new ArrayMap<ResourceName, WeakReference<CharSequence>>();
 }

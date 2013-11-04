@@ -249,20 +249,6 @@ public class InputMethodService extends AbstractInputMethodService {
      */
     public static final int IME_VISIBLE = 0x2;
 
-    int mVolumeKeyCursorControl = 0;
-    /**
-     * @hide
-     */
-    public static final int VOLUME_CURSOR_OFF = 0;
-    /**
-     * @hide
-     */
-    public static final int VOLUME_CURSOR_ON = 1;
-    /**
-     * @hide
-     */
-    public static final int VOLUME_CURSOR_ON_REVERSE = 2;
-
     InputMethodManager mImm;
     
     int mTheme = 0;
@@ -395,7 +381,6 @@ public class InputMethodService extends AbstractInputMethodService {
             if (DEBUG) Log.v(TAG, "unbindInput(): binding=" + mInputBinding
                     + " ic=" + mInputConnection);
             onUnbindInput();
-            mInputStarted = false;
             mInputBinding = null;
             mInputConnection = null;
         }
@@ -445,7 +430,7 @@ public class InputMethodService extends AbstractInputMethodService {
                 }
             }
             // If user uses hard keyboard, IME button should always be shown.
-            boolean showing = onEvaluateInputViewShown();
+            boolean showing = isInputViewShown();
             mImm.setImeWindowStatus(mToken, IME_ACTIVE | (showing ? IME_VISIBLE : 0),
                     mBackDisposition);
             if (resultReceiver != null) {
@@ -702,6 +687,8 @@ public class InputMethodService extends AbstractInputMethodService {
         mThemeAttrs = obtainStyledAttributes(android.R.styleable.InputMethodService);
         mRootView = mInflater.inflate(
                 com.android.internal.R.layout.input_method, null);
+        mRootView.setSystemUiVisibility(
+                View.SYSTEM_UI_FLAG_LAYOUT_STABLE | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION);
         mWindow.setContentView(mRootView);
         mRootView.getViewTreeObserver().addOnComputeInternalInsetsListener(mInsetsComputer);
         if (Settings.Global.getInt(getContentResolver(),
@@ -733,7 +720,7 @@ public class InputMethodService extends AbstractInputMethodService {
         super.onDestroy();
         mRootView.getViewTreeObserver().removeOnComputeInternalInsetsListener(
                 mInsetsComputer);
-        finishViews();
+        doFinishInput();
         if (mWindowAdded) {
             // Disable exit animation for the current IME window
             // to avoid the race condition between the exit and enter animations
@@ -1665,6 +1652,11 @@ public class InputMethodService extends AbstractInputMethodService {
      * the text.  This is called whether or not the input method has requested
      * extracted text updates, although if so it will not receive this call
      * if the extracted text has changed as well.
+     *
+     * <p>Be careful about changing the text in reaction to this call with
+     * methods such as setComposingText, commitText or
+     * deleteSurroundingText. If the cursor moves as a result, this method
+     * will be called again, which may result in an infinite loop.
      * 
      * <p>The default implementation takes care of updating the cursor in
      * the extract text, if it is being shown.
@@ -1781,26 +1773,6 @@ public class InputMethodService extends AbstractInputMethodService {
             }
             return false;
         }
-        if (event.getKeyCode() == KeyEvent.KEYCODE_VOLUME_UP) {
-            mVolumeKeyCursorControl = Settings.System.getInt(getContentResolver(),
-                    Settings.System.VOLUME_KEY_CURSOR_CONTROL, 0);
-            if (isInputViewShown() && (mVolumeKeyCursorControl != VOLUME_CURSOR_OFF)) {
-                sendDownUpKeyEvents((mVolumeKeyCursorControl == VOLUME_CURSOR_ON_REVERSE)
-                        ? KeyEvent.KEYCODE_DPAD_RIGHT : KeyEvent.KEYCODE_DPAD_LEFT);
-                return true;
-            }
-            return false;
-        }
-        if (event.getKeyCode() == KeyEvent.KEYCODE_VOLUME_DOWN) {
-            mVolumeKeyCursorControl = Settings.System.getInt(getContentResolver(),
-                    Settings.System.VOLUME_KEY_CURSOR_CONTROL, 0);
-            if (isInputViewShown() && (mVolumeKeyCursorControl != VOLUME_CURSOR_OFF)) {
-                sendDownUpKeyEvents((mVolumeKeyCursorControl == VOLUME_CURSOR_ON_REVERSE)
-                        ? KeyEvent.KEYCODE_DPAD_LEFT : KeyEvent.KEYCODE_DPAD_RIGHT);
-                return true;
-            }
-            return false;
-        }
         return doMovementKey(keyCode, event, MOVEMENT_DOWN);
     }
 
@@ -1846,15 +1818,7 @@ public class InputMethodService extends AbstractInputMethodService {
                 && !event.isCanceled()) {
             return handleBack(true);
         }
-        if (event.getKeyCode() == KeyEvent.KEYCODE_VOLUME_UP
-                 || keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) {
-            mVolumeKeyCursorControl = Settings.System.getInt(getContentResolver(),
-                    Settings.System.VOLUME_KEY_CURSOR_CONTROL, 0);
-            if (isInputViewShown() && (mVolumeKeyCursorControl != VOLUME_CURSOR_OFF)) {
-                return true;
-            }
-            return false;
-        }
+        
         return doMovementKey(keyCode, event, MOVEMENT_UP);
     }
 

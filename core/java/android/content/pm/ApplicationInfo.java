@@ -1,6 +1,5 @@
 /*
  * Copyright (C) 2007 The Android Open Source Project
- * This code has been modified.  Portions copyright (C) 2010, T-Mobile USA, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -316,6 +315,14 @@ public class ApplicationInfo extends PackageItemInfo implements Parcelable {
     public static final int FLAG_IS_DATA_ONLY = 1<<24;
 
     /**
+     * Value for {@link #flags}: set to {@code true} if the application
+     * is permitted to hold privileged permissions.
+     *
+     * {@hide}
+     */
+    public static final int FLAG_PRIVILEGED = 1<<30;
+
+    /**
      * Value for {@link #flags}: Set to true if the application has been
      * installed using the forward lock option.
      *
@@ -339,6 +346,13 @@ public class ApplicationInfo extends PackageItemInfo implements Parcelable {
     public static final int FLAG_CANT_SAVE_STATE = 1<<28;
 
     /**
+     * Value for {@link #flags}: true if the application is blocked via restrictions and for
+     * most purposes is considered as not installed.
+     * {@hide}
+     */
+    public static final int FLAG_BLOCKED = 1<<27;
+
+    /**
      * Flags associated with the application.  Any combination of
      * {@link #FLAG_SYSTEM}, {@link #FLAG_DEBUGGABLE}, {@link #FLAG_HAS_CODE},
      * {@link #FLAG_PERSISTENT}, {@link #FLAG_FACTORY_TEST}, and
@@ -352,7 +366,7 @@ public class ApplicationInfo extends PackageItemInfo implements Parcelable {
      * {@link #FLAG_INSTALLED}.
      */
     public int flags = 0;
-    
+
     /**
      * The required smallest screen width the application can run on.  If 0,
      * nothing has been specified.  Comes from
@@ -454,30 +468,6 @@ public class ApplicationInfo extends PackageItemInfo implements Parcelable {
      * @hide
      */
     public int enabledSetting = PackageManager.COMPONENT_ENABLED_STATE_DEFAULT;
-    /**
-     * Is given application theme agnostic, i.e. behaves properly when default theme is changed.
-     * {@hide}
-     */
-    public boolean isThemeable = false;
-
-    private static final String PLUTO_SCHEMA = "http://www.w3.org/2001/pluto.html";
-
-    /**
-     * @hide
-     */
-    public static final String PLUTO_ISTHEMEABLE_ATTRIBUTE_NAME = "isThemeable";
-
-    /**
-     * @hide
-     */
-    public static final String PLUTO_HANDLE_THEME_CONFIG_CHANGES_ATTRIBUTE_NAME = "handleThemeConfigChanges";
-
-    /**
-     * @hide
-     */
-    public static boolean isPlutoNamespace(String namespace) {
-        return namespace != null && namespace.equalsIgnoreCase(PLUTO_SCHEMA);
-    }
 
     /**
      * For convenient access to package's install location.
@@ -593,7 +583,6 @@ public class ApplicationInfo extends PackageItemInfo implements Parcelable {
         descriptionRes = orig.descriptionRes;
         uiOptions = orig.uiOptions;
         backupAgentName = orig.backupAgentName;
-        isThemeable = orig.isThemeable;
     }
 
 
@@ -634,7 +623,6 @@ public class ApplicationInfo extends PackageItemInfo implements Parcelable {
         dest.writeString(backupAgentName);
         dest.writeInt(descriptionRes);
         dest.writeInt(uiOptions);
-        dest.writeInt(isThemeable? 1 : 0);
     }
 
     public static final Parcelable.Creator<ApplicationInfo> CREATOR
@@ -674,7 +662,6 @@ public class ApplicationInfo extends PackageItemInfo implements Parcelable {
         backupAgentName = source.readString();
         descriptionRes = source.readInt();
         uiOptions = source.readInt();
-        isThemeable = source.readInt() != 0;
     }
 
     /**
