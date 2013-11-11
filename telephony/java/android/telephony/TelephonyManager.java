@@ -1,8 +1,5 @@
 /*
  * Copyright (C) 2008 The Android Open Source Project
- * Copyright (c) 2012-2013 The Linux Foundation. All rights reserved.
- *
- * Not a Contribution.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -27,8 +24,6 @@ import android.os.RemoteException;
 import android.os.ServiceManager;
 import android.os.SystemProperties;
 import android.telephony.Rlog;
-import android.provider.Settings;
-import android.provider.Settings.SettingNotFoundException;
 
 import com.android.internal.telephony.IPhoneSubInfo;
 import com.android.internal.telephony.ITelephony;
@@ -132,19 +127,40 @@ public class TelephonyManager {
 
     /**
      * The Phone app sends this intent when a user opts to respond-via-message during an incoming
-     * call. By default, the MMS app consumes this message and sends a text message to the caller. A
-     * third party app can provide this functionality in lieu of MMS app by consuming this Intent
-     * and sending the message using their own messaging system.  The intent contains a URI
-     * describing the recipient, and an EXTRA containing the message itself.
-     * <p class="note"><strong>Note:</strong>
-     * The intent-filter which consumes this Intent needs to be in a service which requires the
-     * permission {@link android.Manifest.permission#SEND_RESPOND_VIA_MESSAGE}.</p>
+     * call. By default, the device's default SMS app consumes this message and sends a text message
+     * to the caller. A third party app can also provide this functionality by consuming this Intent
+     * with a {@link android.app.Service} and sending the message using its own messaging system.
+     * <p>The intent contains a URI (available from {@link android.content.Intent#getData})
+     * describing the recipient, using either the {@code sms:}, {@code smsto:}, {@code mms:},
+     * or {@code mmsto:} URI schema. Each of these URI schema carry the recipient information the
+     * same way: the path part of the URI contains the recipient's phone number or a comma-separated
+     * set of phone numbers if there are multiple recipients. For example, {@code
+     * smsto:2065551234}.</p>
      *
-     * <p>
-     * {@link android.content.Intent#getData} is a URI describing the recipient of the message.
-     * <p>
-     * The {@link android.content.Intent#EXTRA_TEXT} extra contains the message
-     * to send.
+     * <p>The intent may also contain extras for the message text (in {@link
+     * android.content.Intent#EXTRA_TEXT}) and a message subject
+     * (in {@link android.content.Intent#EXTRA_SUBJECT}).</p>
+     *
+     * <p class="note"><strong>Note:</strong>
+     * The intent-filter that consumes this Intent needs to be in a {@link android.app.Service}
+     * that requires the
+     * permission {@link android.Manifest.permission#SEND_RESPOND_VIA_MESSAGE}.</p>
+     * <p>For example, the service that receives this intent can be declared in the manifest file
+     * with an intent filter like this:</p>
+     * <pre>
+     * &lt;!-- Service that delivers SMS messages received from the phone "quick response" -->
+     * &lt;service android:name=".HeadlessSmsSendService"
+     *          android:permission="android.permission.SEND_RESPOND_VIA_MESSAGE"
+     *          android:exported="true" >
+     *   &lt;intent-filter>
+     *     &lt;action android:name="android.intent.action.RESPOND_VIA_MESSAGE" />
+     *     &lt;category android:name="android.intent.category.DEFAULT" />
+     *     &lt;data android:scheme="sms" />
+     *     &lt;data android:scheme="smsto" />
+     *     &lt;data android:scheme="mms" />
+     *     &lt;data android:scheme="mmsto" />
+     *   &lt;/intent-filter>
+     * &lt;/service></pre>
      * <p>
      * Output: nothing.
      */
@@ -314,7 +330,7 @@ public class TelephonyManager {
      */
     public List<NeighboringCellInfo> getNeighboringCellInfo() {
         try {
-            return getITelephony().getNeighboringCellInfo(mContext.getBasePackageName());
+            return getITelephony().getNeighboringCellInfo(mContext.getOpPackageName());
         } catch (RemoteException ex) {
             return null;
         } catch (NullPointerException ex) {
@@ -417,22 +433,12 @@ public class TelephonyManager {
         case RILConstants.NETWORK_MODE_GSM_UMTS:
         case RILConstants.NETWORK_MODE_LTE_GSM_WCDMA:
         case RILConstants.NETWORK_MODE_LTE_WCDMA:
-        case RILConstants.NETWORK_MODE_TD_SCDMA_ONLY:
-        case RILConstants.NETWORK_MODE_TD_SCDMA_WCDMA:
-        case RILConstants.NETWORK_MODE_TD_SCDMA_LTE:
-        case RILConstants.NETWORK_MODE_TD_SCDMA_GSM:
-        case RILConstants.NETWORK_MODE_TD_SCDMA_GSM_LTE:
-        case RILConstants.NETWORK_MODE_TD_SCDMA_GSM_WCDMA:
-        case RILConstants.NETWORK_MODE_TD_SCDMA_WCDMA_LTE:
-        case RILConstants.NETWORK_MODE_TD_SCDMA_GSM_WCDMA_LTE:
+        case RILConstants.NETWORK_MODE_LTE_CMDA_EVDO_GSM_WCDMA:
             return PhoneConstants.PHONE_TYPE_GSM;
 
         // Use CDMA Phone for the global mode including CDMA
         case RILConstants.NETWORK_MODE_GLOBAL:
         case RILConstants.NETWORK_MODE_LTE_CDMA_EVDO:
-        case RILConstants.NETWORK_MODE_LTE_CMDA_EVDO_GSM_WCDMA:
-        case RILConstants.NETWORK_MODE_TD_SCDMA_CDMA_EVDO_GSM_WCDMA:
-        case RILConstants.NETWORK_MODE_TD_SCDMA_LTE_CDMA_EVDO_GSM_WCDMA:
             return PhoneConstants.PHONE_TYPE_CDMA;
 
         case RILConstants.NETWORK_MODE_LTE_ONLY:
@@ -523,15 +529,6 @@ public class TelephonyManager {
         return retVal;
     }
 
-    /**
-     * Return if the current radio is LTE on GSM
-     * @hide
-     */
-    public static int getLteOnGsmModeStatic() {
-        return SystemProperties.getInt(TelephonyProperties.PROPERTY_LTE_ON_GSM_DEVICE,
-                    0);
-    }
-
     //
     //
     // Current Network
@@ -546,8 +543,7 @@ public class TelephonyManager {
      * on a CDMA network).
      */
     public String getNetworkOperatorName() {
-        return getTelephonyProperty(TelephonyProperties.PROPERTY_OPERATOR_ALPHA,
-                getDefaultSubscription(), "");
+        return SystemProperties.get(TelephonyProperties.PROPERTY_OPERATOR_ALPHA);
     }
 
     /**
@@ -558,8 +554,7 @@ public class TelephonyManager {
      * on a CDMA network).
      */
     public String getNetworkOperator() {
-        return getTelephonyProperty(TelephonyProperties.PROPERTY_OPERATOR_NUMERIC,
-                getDefaultSubscription(), "");
+        return SystemProperties.get(TelephonyProperties.PROPERTY_OPERATOR_NUMERIC);
     }
 
     /**
@@ -569,8 +564,7 @@ public class TelephonyManager {
      * Availability: Only when user registered to a network.
      */
     public boolean isNetworkRoaming() {
-        return "true".equals(getTelephonyProperty(TelephonyProperties.PROPERTY_OPERATOR_ISROAMING,
-                getDefaultSubscription(), "false"));
+        return "true".equals(SystemProperties.get(TelephonyProperties.PROPERTY_OPERATOR_ISROAMING));
     }
 
     /**
@@ -582,35 +576,7 @@ public class TelephonyManager {
      * on a CDMA network).
      */
     public String getNetworkCountryIso() {
-        return getTelephonyProperty(TelephonyProperties.PROPERTY_OPERATOR_ISO_COUNTRY,
-                getDefaultSubscription(), "");
-    }
-
-    /**
-     * Gets the telephony Default Subscription.
-     *
-     * @hide
-     */
-    public static int getDefaultSubscription() {
-        return  SystemProperties.getInt(TelephonyProperties.PROPERTY_DEFAULT_SUBSCRIPTION, 0);
-    }
-
-
-    /**
-     * Gets the telephony property.
-     *
-     * @hide
-     */
-    public static String getTelephonyProperty(String property, int index, String defaultVal) {
-        String propVal = null;
-        String prop = SystemProperties.get(property);
-         if ((prop != null) && (prop.length() > 0)) {
-            String values[] = prop.split(",");
-            if ((index >= 0) && (index < values.length) && (values[index] != null)) {
-                propVal = values[index];
-            }
-        }
-        return propVal == null ? defaultVal : propVal;
+        return SystemProperties.get(TelephonyProperties.PROPERTY_OPERATOR_ISO_COUNTRY);
     }
 
     /** Network type is unknown */
@@ -645,14 +611,6 @@ public class TelephonyManager {
     public static final int NETWORK_TYPE_EHRPD = 14;
     /** Current network is HSPA+ */
     public static final int NETWORK_TYPE_HSPAP = 15;
-    /** Current network is GSM {@hide} */
-    public static final int NETWORK_TYPE_GSM = 16;
-    /** Current network is TD_SCDMA {@hide} */
-    public static final int NETWORK_TYPE_TD_SCDMA = 17;
-    /** Current network is DC-HSPAP
-     * @hide
-     */
-    public static final int NETWORK_TYPE_DCHSPAP = 30;
 
     /**
      * @return the NETWORK_TYPE_xxxx for current data connection.
@@ -682,8 +640,6 @@ public class TelephonyManager {
      * @see #NETWORK_TYPE_LTE
      * @see #NETWORK_TYPE_EHRPD
      * @see #NETWORK_TYPE_HSPAP
-     * @see #NETWORK_TYPE_TD_SCDMA
-     * @see #NETWORK_TYPE_DCHSPAP
      *
      * @hide
      */
@@ -728,17 +684,6 @@ public class TelephonyManager {
         }
     }
 
-    /**
-     * {@hide}
-     */
-    public void toggleLTE(boolean on) {
-        try {
-            getITelephony().toggleLTE(on);
-        } catch (RemoteException e) {
-            //Silently fail
-        }
-    }
-
     /** Unknown network class. {@hide} */
     public static final int NETWORK_CLASS_UNKNOWN = 0;
     /** Class of broadly defined "2G" networks. {@hide} */
@@ -757,7 +702,6 @@ public class TelephonyManager {
     public static int getNetworkClass(int networkType) {
         switch (networkType) {
             case NETWORK_TYPE_GPRS:
-            case NETWORK_TYPE_GSM:
             case NETWORK_TYPE_EDGE:
             case NETWORK_TYPE_CDMA:
             case NETWORK_TYPE_1xRTT:
@@ -772,8 +716,6 @@ public class TelephonyManager {
             case NETWORK_TYPE_EVDO_B:
             case NETWORK_TYPE_EHRPD:
             case NETWORK_TYPE_HSPAP:
-            case NETWORK_TYPE_DCHSPAP:
-            case NETWORK_TYPE_TD_SCDMA:
                 return NETWORK_CLASS_3_G;
             case NETWORK_TYPE_LTE:
                 return NETWORK_CLASS_4_G;
@@ -826,12 +768,6 @@ public class TelephonyManager {
                 return "iDEN";
             case NETWORK_TYPE_HSPAP:
                 return "HSPA+";
-            case NETWORK_TYPE_DCHSPAP:
-                return "DCHSPAP";
-            case NETWORK_TYPE_GSM:
-                return "GSM";
-            case NETWORK_TYPE_TD_SCDMA:
-                return "TD_SCDMA";
             default:
                 return "UNKNOWN";
         }
@@ -858,10 +794,6 @@ public class TelephonyManager {
     public static final int SIM_STATE_NETWORK_LOCKED = 4;
     /** SIM card state: Ready */
     public static final int SIM_STATE_READY = 5;
-    /** SIM card state: SIM Card Error, Sim Card is present but faulty
-     *@hide
-     */
-    public static final int SIM_STATE_CARD_IO_ERROR = 6;
 
     /**
      * @return true if a ICC card is present
@@ -888,11 +820,9 @@ public class TelephonyManager {
      * @see #SIM_STATE_PUK_REQUIRED
      * @see #SIM_STATE_NETWORK_LOCKED
      * @see #SIM_STATE_READY
-     * @see #SIM_STATE_CARD_IO_ERROR
      */
     public int getSimState() {
-        String prop = getTelephonyProperty(TelephonyProperties.PROPERTY_SIM_STATE,
-                getDefaultSubscription(), "");
+        String prop = SystemProperties.get(TelephonyProperties.PROPERTY_SIM_STATE);
         if ("ABSENT".equals(prop)) {
             return SIM_STATE_ABSENT;
         }
@@ -902,14 +832,11 @@ public class TelephonyManager {
         else if ("PUK_REQUIRED".equals(prop)) {
             return SIM_STATE_PUK_REQUIRED;
         }
-        else if ("PERSO_LOCKED".equals(prop)) {
+        else if ("NETWORK_LOCKED".equals(prop)) {
             return SIM_STATE_NETWORK_LOCKED;
         }
         else if ("READY".equals(prop)) {
             return SIM_STATE_READY;
-        }
-        else if ("CARD_IO_ERROR".equals(prop)) {
-            return SIM_STATE_CARD_IO_ERROR;
         }
         else {
             return SIM_STATE_UNKNOWN;
@@ -925,8 +852,7 @@ public class TelephonyManager {
      * @see #getSimState
      */
     public String getSimOperator() {
-        return getTelephonyProperty(TelephonyProperties.PROPERTY_ICC_OPERATOR_NUMERIC,
-                getDefaultSubscription(), "");
+        return SystemProperties.get(TelephonyProperties.PROPERTY_ICC_OPERATOR_NUMERIC);
     }
 
     /**
@@ -937,16 +863,14 @@ public class TelephonyManager {
      * @see #getSimState
      */
     public String getSimOperatorName() {
-        return getTelephonyProperty(TelephonyProperties.PROPERTY_ICC_OPERATOR_ALPHA,
-                getDefaultSubscription(), "");
+        return SystemProperties.get(TelephonyProperties.PROPERTY_ICC_OPERATOR_ALPHA);
     }
 
     /**
      * Returns the ISO country code equivalent for the SIM provider's country code.
      */
     public String getSimCountryIso() {
-        return getTelephonyProperty(TelephonyProperties.PROPERTY_ICC_OPERATOR_ISO_COUNTRY,
-                getDefaultSubscription(), "");
+        return SystemProperties.get(TelephonyProperties.PROPERTY_ICC_OPERATOR_ISO_COUNTRY);
     }
 
     /**
@@ -986,21 +910,6 @@ public class TelephonyManager {
         } catch (NullPointerException ex) {
             // This could happen before phone restarts due to crashing
             return PhoneConstants.LTE_ON_CDMA_UNKNOWN;
-        }
-    }
-
-    /**
-     * Return if the current radio is LTE on GSM
-     * @hide
-     */
-    public int getLteOnGsmMode() {
-        try {
-            return getITelephony().getLteOnGsmMode();
-        } catch (RemoteException ex) {
-            return 0;
-        } catch (NullPointerException ex) {
-            // This could happen before phone restarts due to crashing
-            return 0;
         }
     }
 
@@ -1511,5 +1420,23 @@ public class TelephonyManager {
         } catch (RemoteException ex) {
         } catch (NullPointerException ex) {
         }
+    }
+
+    /**
+     * Returns the MMS user agent.
+     */
+    public String getMmsUserAgent() {
+        if (mContext == null) return null;
+        return mContext.getResources().getString(
+                com.android.internal.R.string.config_mms_user_agent);
+    }
+
+    /**
+     * Returns the MMS user agent profile URL.
+     */
+    public String getMmsUAProfUrl() {
+        if (mContext == null) return null;
+        return mContext.getResources().getString(
+                com.android.internal.R.string.config_mms_user_agent_profile_url);
     }
 }

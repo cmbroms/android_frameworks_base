@@ -1,5 +1,4 @@
 /*
- * Copyright (c) 2013, The Linux Foundation. All rights reserved.
  * Copyright (c) 2008-2009, Motorola, Inc.
  *
  * All rights reserved.
@@ -178,7 +177,7 @@ public interface Operation {
 
     void close() throws IOException;
 
-    void noEndofBody();
-
     int getMaxPacketSize();
+
+    public void noBodyHeader();
 }

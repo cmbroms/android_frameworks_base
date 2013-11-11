@@ -23,9 +23,6 @@ import android.text.Spanned;
 import android.view.KeyEvent;
 import android.view.View;
 import android.view.KeyCharacterMap;
-import android.os.IPowerManager;
-import android.os.RemoteException;
-import android.os.ServiceManager;
 
 /**
  * This base class encapsulates the behavior for tracking the state of
@@ -138,6 +135,9 @@ public abstract class MetaKeyKeyListener {
     private static final Object SYM = new NoCopySpan.Concrete();
     private static final Object SELECTING = new NoCopySpan.Concrete();
 
+    private static final int PRESSED_RETURN_VALUE = 1;
+    private static final int LOCKED_RETURN_VALUE = 2;
+
     /**
      * Resets all meta state to inactive.
      */
@@ -164,9 +164,34 @@ public abstract class MetaKeyKeyListener {
     }
 
     /**
+     * Gets the state of the meta keys for a specific key event.
+     *
+     * For input devices that use toggled key modifiers, the `toggled' state
+     * is stored into the text buffer. This method retrieves the meta state
+     * for this event, accounting for the stored state. If the event has been
+     * created by a device that does not support toggled key modifiers, like
+     * a virtual device for example, the stored state is ignored.
+     *
+     * @param text the buffer in which the meta key would have been pressed.
+     * @param event the event for which to evaluate the meta state.
+     * @return an integer in which each bit set to one represents a pressed
+     *         or locked meta key.
+     */
+    public static final int getMetaState(final CharSequence text, final KeyEvent event) {
+        int metaState = event.getMetaState();
+        if (event.getKeyCharacterMap().getModifierBehavior()
+                == KeyCharacterMap.MODIFIER_BEHAVIOR_CHORDED_OR_TOGGLED) {
+            metaState |= getMetaState(text);
+        }
+        return metaState;
+    }
+
+    // As META_SELECTING is @hide we should not mention it in public comments, hence the
+    // omission in @param meta
+    /**
      * Gets the state of a particular meta key.
      *
-     * @param meta META_SHIFT_ON, META_ALT_ON, META_SYM_ON, or META_SELECTING
+     * @param meta META_SHIFT_ON, META_ALT_ON, META_SYM_ON
      * @param text the buffer in which the meta key would have been pressed.
      *
      * @return 0 if inactive, 1 if active, 2 if locked.
@@ -174,20 +199,51 @@ public abstract class MetaKeyKeyListener {
     public static final int getMetaState(CharSequence text, int meta) {
         switch (meta) {
             case META_SHIFT_ON:
-                return getActive(text, CAP, 1, 2);
+                return getActive(text, CAP, PRESSED_RETURN_VALUE, LOCKED_RETURN_VALUE);
 
             case META_ALT_ON:
-                return getActive(text, ALT, 1, 2);
+                return getActive(text, ALT, PRESSED_RETURN_VALUE, LOCKED_RETURN_VALUE);
 
             case META_SYM_ON:
-                return getActive(text, SYM, 1, 2);
+                return getActive(text, SYM, PRESSED_RETURN_VALUE, LOCKED_RETURN_VALUE);
 
             case META_SELECTING:
-                return getActive(text, SELECTING, 1, 2);
+                return getActive(text, SELECTING, PRESSED_RETURN_VALUE, LOCKED_RETURN_VALUE);
 
             default:
                 return 0;
         }
+    }
+
+    /**
+     * Gets the state of a particular meta key to use with a particular key event.
+     *
+     * If the key event has been created by a device that does not support toggled
+     * key modifiers, like a virtual keyboard for example, only the meta state in
+     * the key event is considered.
+     *
+     * @param meta META_SHIFT_ON, META_ALT_ON, META_SYM_ON
+     * @param text the buffer in which the meta key would have been pressed.
+     * @param event the event for which to evaluate the meta state.
+     * @return 0 if inactive, 1 if active, 2 if locked.
+     */
+    public static final int getMetaState(final CharSequence text, final int meta,
+            final KeyEvent event) {
+        int metaState = event.getMetaState();
+        if (event.getKeyCharacterMap().getModifierBehavior()
+                == KeyCharacterMap.MODIFIER_BEHAVIOR_CHORDED_OR_TOGGLED) {
+            metaState |= getMetaState(text);
+        }
+        if (META_SELECTING == meta) {
+            // #getMetaState(long, int) does not support META_SELECTING, but we want the same
+            // behavior as #getMetaState(CharSequence, int) so we need to do it here
+            if ((metaState & META_SELECTING) != 0) {
+                // META_SELECTING is only ever set to PRESSED and can't be LOCKED, so return 1
+                return 1;
+            }
+            return 0;
+        }
+        return getMetaState(metaState, meta);
     }
 
     private static int getActive(CharSequence text, Object meta,
@@ -217,14 +273,6 @@ public abstract class MetaKeyKeyListener {
         adjust(content, CAP);
         adjust(content, ALT);
         adjust(content, SYM);
-        try {
-            IPowerManager power = IPowerManager.Stub.asInterface(
-                ServiceManager.getService("power"));
-            if (getMetaState(content, META_SHIFT_ON) <= 0)
-                power.setKeyboardLight(false, 1);
-            if (getMetaState(content, META_ALT_ON) <= 0)
-                power.setKeyboardLight(false, 2);
-        } catch (RemoteException doe) {}
     }
 
     /**
@@ -277,32 +325,12 @@ public abstract class MetaKeyKeyListener {
     public boolean onKeyDown(View view, Editable content, int keyCode, KeyEvent event) {
         if (keyCode == KeyEvent.KEYCODE_SHIFT_LEFT || keyCode == KeyEvent.KEYCODE_SHIFT_RIGHT) {
             press(content, CAP);
-            try {
-                IPowerManager power = IPowerManager.Stub.asInterface(
-                    ServiceManager.getService("power"));
-                int state = content.getSpanFlags(CAP);
-                if (state == PRESSED || state == LOCKED) {
-                    power.setKeyboardLight(true, 1);
-                } else {
-                    power.setKeyboardLight(false, 1);
-                }
-            } catch (RemoteException doe) {}
             return true;
         }
 
         if (keyCode == KeyEvent.KEYCODE_ALT_LEFT || keyCode == KeyEvent.KEYCODE_ALT_RIGHT
                 || keyCode == KeyEvent.KEYCODE_NUM) {
             press(content, ALT);
-            try {
-                IPowerManager power = IPowerManager.Stub.asInterface(
-                    ServiceManager.getService("power"));
-                int state = content.getSpanFlags(ALT);
-                if (state == PRESSED || state == LOCKED) {
-                    power.setKeyboardLight(true, 2);
-                } else {
-                    power.setKeyboardLight(false, 2);
-                }
-            } catch (RemoteException doe) {}
             return true;
         }
 
@@ -461,18 +489,18 @@ public abstract class MetaKeyKeyListener {
     public static final int getMetaState(long state, int meta) {
         switch (meta) {
             case META_SHIFT_ON:
-                if ((state & META_CAP_LOCKED) != 0) return 2;
-                if ((state & META_SHIFT_ON) != 0) return 1;
+                if ((state & META_CAP_LOCKED) != 0) return LOCKED_RETURN_VALUE;
+                if ((state & META_SHIFT_ON) != 0) return PRESSED_RETURN_VALUE;
                 return 0;
 
             case META_ALT_ON:
-                if ((state & META_ALT_LOCKED) != 0) return 2;
-                if ((state & META_ALT_ON) != 0) return 1;
+                if ((state & META_ALT_LOCKED) != 0) return LOCKED_RETURN_VALUE;
+                if ((state & META_ALT_ON) != 0) return PRESSED_RETURN_VALUE;
                 return 0;
 
             case META_SYM_ON:
-                if ((state & META_SYM_LOCKED) != 0) return 2;
-                if ((state & META_SYM_ON) != 0) return 1;
+                if ((state & META_SYM_LOCKED) != 0) return LOCKED_RETURN_VALUE;
+                if ((state & META_SYM_ON) != 0) return PRESSED_RETURN_VALUE;
                 return 0;
 
             default:
@@ -630,4 +658,3 @@ public abstract class MetaKeyKeyListener {
     private static final int LOCKED = 
         Spannable.SPAN_MARK_MARK | (4 << Spannable.SPAN_USER_SHIFT);
 }
-

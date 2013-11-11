@@ -181,16 +181,38 @@ public class MediaRecorder
         public static final int VOICE_COMMUNICATION = 7;
 
         /**
-         * @hide
-         * Audio source for remote submix.
+         * Audio source for a submix of audio streams to be presented remotely.
+         * <p>
+         * An application can use this audio source to capture a mix of audio streams
+         * that should be transmitted to a remote receiver such as a Wifi display.
+         * While recording is active, these audio streams are redirected to the remote
+         * submix instead of being played on the device speaker or headset.
+         * </p><p>
+         * Certain streams are excluded from the remote submix, including
+         * {@link AudioManager#STREAM_RING}, {@link AudioManager#STREAM_ALARM},
+         * and {@link AudioManager#STREAM_NOTIFICATION}.  These streams will continue
+         * to be presented locally as usual.
+         * </p><p>
+         * Capturing the remote submix audio requires the
+         * {@link android.Manifest.permission#CAPTURE_AUDIO_OUTPUT} permission.
+         * This permission is reserved for use by system components and is not available to
+         * third-party applications.
+         * </p>
          */
-        public static final int REMOTE_SUBMIX_SOURCE = 8;
+        public static final int REMOTE_SUBMIX = 8;
 
-        /** @hide */
-        public static final int FM_RX = 9;
-
-        /** @hide */
-        public static final int FM_RX_A2DP = 10;
+        /**
+         * Audio source for preemptible, low-priority software hotword detection
+         * It presents the same gain and pre processing tuning as {@link #VOICE_RECOGNITION}.
+         * <p>
+         * An application should use this audio source when it wishes to do
+         * always-on software hotword detection, while gracefully giving in to any other application
+         * that might want to read from the microphone.
+         * </p>
+         * This is a hidden audio source.
+         * @hide
+         */
+        protected static final int HOTWORD = 1999;
     }
 
     /**
@@ -249,13 +271,6 @@ public class MediaRecorder
 
         /** @hide H.264/AAC data encapsulated in MPEG2/TS */
         public static final int OUTPUT_FORMAT_MPEG2TS = 8;
-
-        /** @hide QCP file format */
-        public static final int QCP = 9;
-        /** @hide 3GPP2 media file format*/
-        public static final int THREE_GPP2 = 10;
-        /** @hide WAVE media file format*/
-        public static final int WAVE = 11;
     };
 
     /**
@@ -278,12 +293,6 @@ public class MediaRecorder
         public static final int HE_AAC = 4;
         /** Enhanced Low Delay AAC (AAC-ELD) audio codec */
         public static final int AAC_ELD = 5;
-        /** @hide EVRC audio codec */
-        public static final int EVRC = 6;
-        /** @hide QCELP audio codec */
-        public static final int QCELP =7;
-        /** @hide Linear PCM audio codec */
-        public static final int LPCM =8;
     }
 
     /**
@@ -319,10 +328,7 @@ public class MediaRecorder
      * @see android.media.MediaRecorder.AudioSource
      */
     public static final int getAudioSourceMax() {
-        // FIXME disable selection of the remote submxi source selection once test code
-        //       doesn't rely on it
-        return AudioSource.FM_RX_A2DP;
-        //return AudioSource.VOICE_COMMUNICATION;
+        return AudioSource.REMOTE_SUBMIX;
     }
 
     /**
@@ -357,7 +363,7 @@ public class MediaRecorder
              profile.quality <= CamcorderProfile.QUALITY_TIME_LAPSE_QVGA) {
             // Nothing needs to be done. Call to setCaptureRate() enables
             // time lapse video recording.
-        } else if (profile.audioCodec >= 0) {
+        } else {
             setAudioEncodingBitRate(profile.audioBitRate);
             setAudioChannels(profile.audioChannels);
             setAudioSamplingRate(profile.audioSampleRate);
@@ -711,10 +717,6 @@ public class MediaRecorder
      * prepare().
      */
     public native void start() throws IllegalStateException;
-
-/** @hide
-*/
-    public native void pause() throws IllegalStateException;
 
     /**
      * Stops recording. Call this after start(). Once recording is stopped,

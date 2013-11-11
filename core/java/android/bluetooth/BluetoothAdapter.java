@@ -1,6 +1,4 @@
 /*
- * Copyright (C) 2013 The Linux Foundation. All rights reserved
- * Not a Contribution.
  * Copyright (C) 2009 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -29,7 +27,6 @@ import android.os.RemoteException;
 import android.os.ServiceManager;
 import android.util.Log;
 import android.util.Pair;
-
 import java.io.IOException;
 import java.lang.ref.WeakReference;
 import java.util.ArrayList;
@@ -38,6 +35,7 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.HashMap;
 import java.util.LinkedList;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Random;
 import java.util.Set;
@@ -52,7 +50,7 @@ import java.util.UUID;
  * devices, and start a scan for Bluetooth LE devices.
  *
  * <p>To get a {@link BluetoothAdapter} representing the local Bluetooth
- * adapter, when running on JELLY_BEAN_MR1 and below, call the 
+ * adapter, when running on JELLY_BEAN_MR1 and below, call the
  * static {@link #getDefaultAdapter} method; when running on JELLY_BEAN_MR2 and
  * higher, retrieve it through
  * {@link android.content.Context#getSystemService} with
@@ -435,7 +433,7 @@ public final class BluetoothAdapter {
         if (address == null || address.length != 6) {
             throw new IllegalArgumentException("Bluetooth address must have 6 bytes");
         }
-        return new BluetoothDevice(String.format("%02X:%02X:%02X:%02X:%02X:%02X",
+        return new BluetoothDevice(String.format(Locale.US, "%02X:%02X:%02X:%02X:%02X:%02X",
                 address[0], address[1], address[2], address[3], address[4], address[5]));
     }
 
@@ -598,6 +596,25 @@ public final class BluetoothAdapter {
             return mManagerService.getName();
         } catch (RemoteException e) {Log.e(TAG, "", e);}
         return null;
+    }
+
+    /**
+     * enable or disable Bluetooth HCI snoop log.
+     *
+     * <p>Requires the {@link android.Manifest.permission#BLUETOOTH_ADMIN}
+     * permission
+     *
+     * @return true to indicate configure HCI log successfully, or false on
+     *         immediate error
+     * @hide
+     */
+    public boolean configHciSnoopLog(boolean enable) {
+        try {
+            synchronized(mManagerCallback) {
+                if (mService != null) return mService.configHciSnoopLog(enable);
+            }
+        } catch (RemoteException e) {Log.e(TAG, "", e);}
+        return false;
     }
 
     /**
@@ -956,15 +973,7 @@ public final class BluetoothAdapter {
      */
     public BluetoothServerSocket listenUsingRfcommWithServiceRecord(String name, UUID uuid)
             throws IOException {
-        return createNewRfcommSocketAndRecord(name, -1, uuid, true, true);
-    }
-
-    /**
-     * @hide
-     */
-    public BluetoothServerSocket listenUsingRfcommWithServiceRecordOn(String name, int port, UUID uuid)
-            throws IOException {
-        return createNewRfcommSocketAndRecord(name, port, uuid, true, true);
+        return createNewRfcommSocketAndRecord(name, uuid, true, true);
     }
 
     /**
@@ -995,7 +1004,7 @@ public final class BluetoothAdapter {
      */
     public BluetoothServerSocket listenUsingInsecureRfcommWithServiceRecord(String name, UUID uuid)
             throws IOException {
-        return createNewRfcommSocketAndRecord(name, -1, uuid, false, false);
+        return createNewRfcommSocketAndRecord(name, uuid, false, false);
     }
 
      /**
@@ -1033,15 +1042,15 @@ public final class BluetoothAdapter {
      */
     public BluetoothServerSocket listenUsingEncryptedRfcommWithServiceRecord(
             String name, UUID uuid) throws IOException {
-        return createNewRfcommSocketAndRecord(name, -1, uuid, false, true);
+        return createNewRfcommSocketAndRecord(name, uuid, false, true);
     }
 
 
-    private BluetoothServerSocket createNewRfcommSocketAndRecord(String name, int port, UUID uuid,
+    private BluetoothServerSocket createNewRfcommSocketAndRecord(String name, UUID uuid,
             boolean auth, boolean encrypt) throws IOException {
         BluetoothServerSocket socket;
         socket = new BluetoothServerSocket(BluetoothSocket.TYPE_RFCOMM, auth,
-                        encrypt, port, new ParcelUuid(uuid));
+                        encrypt, new ParcelUuid(uuid));
         socket.setServiceName(name);
         int errno = socket.mSocket.bindListen();
         if (errno != 0) {
@@ -1180,17 +1189,11 @@ public final class BluetoothAdapter {
         } else if (profile == BluetoothProfile.PAN) {
             BluetoothPan pan = new BluetoothPan(context, listener);
             return true;
-        } else if (profile == BluetoothProfile.SAP) {
-            BluetoothSap sap = new BluetoothSap(context, listener);
-            return true;
-        } else if (profile == BluetoothProfile.DUN) {
-            BluetoothDun dun = new BluetoothDun(context, listener);
-            return true;
         } else if (profile == BluetoothProfile.HEALTH) {
             BluetoothHealth health = new BluetoothHealth(context, listener);
             return true;
-        } else if (profile == BluetoothProfile.HANDSFREE_CLIENT) {
-            BluetoothHandsfreeClient hfpclient = new BluetoothHandsfreeClient(context, listener);
+        } else if (profile == BluetoothProfile.MAP) {
+            BluetoothMap map = new BluetoothMap(context, listener);
             return true;
         } else {
             return false;
@@ -1228,14 +1231,6 @@ public final class BluetoothAdapter {
                 BluetoothPan pan = (BluetoothPan)proxy;
                 pan.close();
                 break;
-            case BluetoothProfile.SAP:
-                BluetoothSap sap = (BluetoothSap)proxy;
-                sap.close();
-                break;
-            case BluetoothProfile.DUN:
-                BluetoothDun dun = (BluetoothDun)proxy;
-                dun.close();
-                break;
             case BluetoothProfile.HEALTH:
                 BluetoothHealth health = (BluetoothHealth)proxy;
                 health.close();
@@ -1248,9 +1243,9 @@ public final class BluetoothAdapter {
                 BluetoothGattServer gattServer = (BluetoothGattServer)proxy;
                 gattServer.close();
                 break;
-            case BluetoothProfile.HANDSFREE_CLIENT:
-                BluetoothHandsfreeClient hfpclient = (BluetoothHandsfreeClient)proxy;
-                hfpclient.close();
+            case BluetoothProfile.MAP:
+                BluetoothMap map = (BluetoothMap)proxy;
+                map.close();
                 break;
         }
     }
@@ -1715,7 +1710,7 @@ public final class BluetoothAdapter {
         public void onGetDescriptor(String address, int srvcType,
                                     int srvcInstId, ParcelUuid srvcUuid,
                                     int charInstId, ParcelUuid charUuid,
-                                    ParcelUuid descUuid) {
+                                    int descInstId, ParcelUuid descUuid) {
             // no op
         }
 
@@ -1745,14 +1740,14 @@ public final class BluetoothAdapter {
         public void onDescriptorRead(String address, int status, int srvcType,
                                      int srvcInstId, ParcelUuid srvcUuid,
                                      int charInstId, ParcelUuid charUuid,
-                                     ParcelUuid descrUuid, byte[] value) {
+                                     int descInstId, ParcelUuid descrUuid, byte[] value) {
             // no op
         }
 
         public void onDescriptorWrite(String address, int status, int srvcType,
                                       int srvcInstId, ParcelUuid srvcUuid,
                                       int charInstId, ParcelUuid charUuid,
-                                      ParcelUuid descrUuid) {
+                                      int descInstId, ParcelUuid descrUuid) {
             // no op
         }
 
@@ -1761,6 +1756,10 @@ public final class BluetoothAdapter {
         }
 
         public void onReadRemoteRssi(String address, int rssi, int status) {
+            // no op
+        }
+
+        public void onListen(int status) {
             // no op
         }
     }

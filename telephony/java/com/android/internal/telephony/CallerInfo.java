@@ -20,8 +20,8 @@ import android.content.Context;
 import android.database.Cursor;
 import android.graphics.Bitmap;
 import android.graphics.drawable.Drawable;
-import android.location.CountryDetector;
 import android.location.Country;
+import android.location.CountryDetector;
 import android.net.Uri;
 import android.provider.ContactsContract.CommonDataKinds.Phone;
 import android.provider.ContactsContract.Data;
@@ -49,10 +49,6 @@ import java.util.Locale;
 public class CallerInfo {
     private static final String TAG = "CallerInfo";
     private static final boolean VDBG = Rlog.isLoggable(TAG, Log.VERBOSE);
-
-    public static final String UNKNOWN_NUMBER = "-1";
-    public static final String PRIVATE_NUMBER = "-2";
-    public static final String PAYPHONE_NUMBER = "-3";
 
     /**
      * Please note that, any one of these member variables can be null,
@@ -550,8 +546,6 @@ public class CallerInfo {
             if (VDBG) Rlog.v(TAG, "- parsed number: " + pn);
         } catch (NumberParseException e) {
             Rlog.w(TAG, "getGeoDescription: NumberParseException for incoming number '" + number + "'");
-        } catch (Exception e) {
-            Log.w(TAG, "Exception Caught" + e);
         }
 
         if (pn != null) {
@@ -568,20 +562,27 @@ public class CallerInfo {
      *         is in.
      */
     private static String getCurrentCountryIso(Context context, Locale locale) {
-      String countryIso;
-      Country country;
-      CountryDetector detector = (CountryDetector) context.getSystemService(
-          Context.COUNTRY_DETECTOR);
-      if ((detector != null) && ((country = detector.detectCountry()) != null)) {
-              countryIso = country.getCountryIso();
-      } else if (locale != null) {
-           countryIso = locale.getCountry();
-           Rlog.w(TAG, "No CountryDetector; falling back to countryIso based on locale: "
-                  + countryIso);
-      } else {
-           countryIso = "US"; //default value is "US"
-      }
-      return countryIso;
+        String countryIso = null;
+        CountryDetector detector = (CountryDetector) context.getSystemService(
+                Context.COUNTRY_DETECTOR);
+        if (detector != null) {
+            Country country = detector.detectCountry();
+            if (country != null) {
+                countryIso = country.getCountryIso();
+            } else {
+                Rlog.e(TAG, "CountryDetector.detectCountry() returned null.");
+            }
+        }
+        if (countryIso == null) {
+            countryIso = locale.getCountry();
+            Rlog.w(TAG, "No CountryDetector; falling back to countryIso based on locale: "
+                    + countryIso);
+        }
+        return countryIso;
+    }
+
+    protected static String getCurrentCountryIso(Context context) {
+        return getCurrentCountryIso(context, Locale.getDefault());
     }
 
     /**

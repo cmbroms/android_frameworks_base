@@ -17,7 +17,6 @@
 package android.view;
 
 import android.app.AppGlobals;
-import android.content.ContentResolver;
 import android.content.Context;
 import android.content.res.Configuration;
 import android.content.res.Resources;
@@ -96,6 +95,13 @@ public class ViewConfiguration {
      * double-tap.
      */
     private static final int DOUBLE_TAP_TIMEOUT = 300;
+
+    /**
+     * Defines the minimum duration in milliseconds between the first tap's up event and
+     * the second tap's down event for an interaction to be considered a
+     * double-tap.
+     */
+    private static final int DOUBLE_TAP_MIN_TIME = 40;
 
     /**
      * Defines the maximum duration in milliseconds between a touch pad
@@ -224,8 +230,6 @@ public class ViewConfiguration {
     private boolean sHasPermanentMenuKey;
     private boolean sHasPermanentMenuKeySet;
 
-    private Context mContext;
-
     static final SparseArray<ViewConfiguration> sConfigurations =
             new SparseArray<ViewConfiguration>(2);
 
@@ -273,8 +277,6 @@ public class ViewConfiguration {
             sizeAndDensity = density;
         }
 
-        mContext = context;
-
         mEdgeSlop = (int) (sizeAndDensity * EDGE_SLOP + 0.5f);
         mFadingEdgeLength = (int) (sizeAndDensity * FADING_EDGE_LENGTH + 0.5f);
         mMinimumFlingVelocity = (int) (density * MINIMUM_FLING_VELOCITY + 0.5f);
@@ -296,7 +298,7 @@ public class ViewConfiguration {
         if (!sHasPermanentMenuKeySet) {
             IWindowManager wm = WindowManagerGlobal.getWindowManagerService();
             try {
-                sHasPermanentMenuKey = !wm.hasSystemNavBar() && !wm.hasNavigationBar();
+                sHasPermanentMenuKey = !wm.hasNavigationBar();
                 sHasPermanentMenuKeySet = true;
             } catch (RemoteException ex) {
                 sHasPermanentMenuKey = false;
@@ -438,6 +440,17 @@ public class ViewConfiguration {
      */
     public static int getDoubleTapTimeout() {
         return DOUBLE_TAP_TIMEOUT;
+    }
+
+    /**
+     * @return the minimum duration in milliseconds between the first tap's
+     * up event and the second tap's down event for an interaction to be considered a
+     * double-tap.
+     *
+     * @hide
+     */
+    public static int getDoubleTapMinTime() {
+        return DOUBLE_TAP_MIN_TIME;
     }
 
     /**
@@ -683,26 +696,7 @@ public class ViewConfiguration {
      * @return true if a permanent menu key is present, false otherwise.
      */
     public boolean hasPermanentMenuKey() {
-        // Report no menu key if only soft buttons are available
-        if (!sHasPermanentMenuKey) {
-            return false;
-        }
-
-        // Report no menu key if overflow button is forced to enabled
-        ContentResolver res = mContext.getContentResolver();
-        boolean forceOverflowButton = Settings.System.getInt(res,
-                Settings.System.UI_FORCE_OVERFLOW_BUTTON, 0) == 1;
-        if (forceOverflowButton) {
-            return false;
-        }
-
-        // Report menu key presence based on hardware key rebinding
-        IWindowManager wm = WindowManagerGlobal.getWindowManagerService();
-        try {
-            return wm.hasMenuKeyEnabled();
-        } catch (RemoteException ex) {
-            return sHasPermanentMenuKey;
-        }
+        return sHasPermanentMenuKey;
     }
 
     /**

@@ -1,8 +1,5 @@
 /*
  * Copyright (C) 2008 The Android Open Source Project
- * Copyright (c) 2012-2013 The Linux Foundation. All rights reserved.
- *
- * Not a Contribution.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,30 +22,13 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
-import android.location.LocationManager;
 import android.media.AudioManager;
-import android.net.ConnectivityManager;
-import android.net.NetworkInfo;
-import android.net.wifi.WifiManager;
-import android.os.Binder;
 import android.os.Handler;
-import android.os.RemoteException;
-import android.os.storage.StorageManager;
-import android.provider.Settings;
-import android.telephony.PhoneStateListener;
-import android.telephony.ServiceState;
-import android.telephony.SignalStrength;
-import android.telephony.MSimTelephonyManager;
-import android.telephony.TelephonyManager;
-import android.util.Slog;
+import android.util.Log;
 
-import com.android.internal.telephony.IccCard;
 import com.android.internal.telephony.IccCardConstants;
-import com.android.internal.telephony.MSimConstants;
 import com.android.internal.telephony.TelephonyIntents;
-import com.android.internal.telephony.cdma.EriInfo;
 import com.android.internal.telephony.cdma.TtyIntent;
-import com.android.server.am.BatteryStatsService;
 import com.android.systemui.R;
 
 /**
@@ -76,33 +56,15 @@ public class PhoneStatusBarPolicy {
     private final StatusBarManager mService;
     private final Handler mHandler = new Handler();
 
-    // storage
-    private StorageManager mStorageManager;
-
-
     // Assume it's all good unless we hear otherwise.  We don't always seem
     // to get broadcasts that it *is* there.
-    IccCardConstants.State[] mSimState;
+    IccCardConstants.State mSimState = IccCardConstants.State.READY;
 
     // ringer volume
     private boolean mVolumeVisible;
 
     // bluetooth device status
     private boolean mBluetoothEnabled = false;
-
-    // wifi
-    private static final int[][] sWifiSignalImages = {
-            { R.drawable.stat_sys_wifi_signal_1,
-              R.drawable.stat_sys_wifi_signal_2,
-              R.drawable.stat_sys_wifi_signal_3,
-              R.drawable.stat_sys_wifi_signal_4 },
-            { R.drawable.stat_sys_wifi_signal_1_fully,
-              R.drawable.stat_sys_wifi_signal_2_fully,
-              R.drawable.stat_sys_wifi_signal_3_fully,
-              R.drawable.stat_sys_wifi_signal_4_fully }
-        };
-    private static final int sWifiTemporarilyNotConnectedImage =
-            R.drawable.stat_sys_wifi_signal_0;
 
     private int mLastWifiSignalLevel = -1;
     private boolean mIsWifiConnected = false;
@@ -155,16 +117,6 @@ public class PhoneStatusBarPolicy {
         filter.addAction(TtyIntent.TTY_ENABLED_CHANGE_ACTION);
         mContext.registerReceiver(mIntentReceiver, filter, null, mHandler);
 
-        int numPhones = MSimTelephonyManager.getDefault().getPhoneCount();
-        mSimState = new IccCardConstants.State[numPhones];
-        for (int i=0; i < numPhones; i++) {
-            mSimState[i] = IccCardConstants.State.READY;
-        }
-        // storage
-        mStorageManager = (StorageManager) context.getSystemService(Context.STORAGE_SERVICE);
-        mStorageManager.registerListener(
-                new com.android.systemui.usb.StorageNotification(context));
-
         // TTY status
         mService.setIcon("tty",  R.drawable.stat_sys_tty_mode, 0, null);
         mService.setIconVisibility("tty", false);
@@ -191,9 +143,8 @@ public class PhoneStatusBarPolicy {
 
         // Sync state
         mService.setIcon("sync_active", R.drawable.stat_sys_sync, 0, null);
-        mService.setIcon("sync_failing", R.drawable.stat_sys_sync_error, 0, null);
         mService.setIconVisibility("sync_active", false);
-        mService.setIconVisibility("sync_failing", false);
+        // "sync_failing" is obsolete: b/1297963
 
         // volume
         mService.setIcon("volume", R.drawable.stat_sys_ringer_silent, 0, null);
@@ -209,45 +160,32 @@ public class PhoneStatusBarPolicy {
     private final void updateSyncState(Intent intent) {
         if (!SHOW_SYNC_ICON) return;
         boolean isActive = intent.getBooleanExtra("active", false);
-        boolean isFailing = intent.getBooleanExtra("failing", false);
         mService.setIconVisibility("sync_active", isActive);
-        // Don't display sync failing icon: BUG 1297963 Set sync error timeout to "never"
-        //mService.setIconVisibility("sync_failing", isFailing && !isActive);
     }
 
     private final void updateSimState(Intent intent) {
-        IccCardConstants.State simState;
         String stateExtra = intent.getStringExtra(IccCardConstants.INTENT_KEY_ICC_STATE);
-
-        // Obtain the subscription info from intent
-        int sub = intent.getIntExtra(MSimConstants.SUBSCRIPTION_KEY, 0);
-        Slog.d(TAG, "updateSimState for subscription :" + sub);
-
         if (IccCardConstants.INTENT_VALUE_ICC_ABSENT.equals(stateExtra)) {
-            simState = IccCardConstants.State.ABSENT;
-        }
-        else if (IccCardConstants.INTENT_VALUE_ICC_CARD_IO_ERROR.equals(stateExtra)) {
-            simState = IccCardConstants.State.CARD_IO_ERROR;
+            mSimState = IccCardConstants.State.ABSENT;
         }
         else if (IccCardConstants.INTENT_VALUE_ICC_READY.equals(stateExtra)) {
-            simState = IccCardConstants.State.READY;
+            mSimState = IccCardConstants.State.READY;
         }
         else if (IccCardConstants.INTENT_VALUE_ICC_LOCKED.equals(stateExtra)) {
             final String lockedReason =
                     intent.getStringExtra(IccCardConstants.INTENT_KEY_LOCKED_REASON);
             if (IccCardConstants.INTENT_VALUE_LOCKED_ON_PIN.equals(lockedReason)) {
-                simState = IccCardConstants.State.PIN_REQUIRED;
+                mSimState = IccCardConstants.State.PIN_REQUIRED;
             }
             else if (IccCardConstants.INTENT_VALUE_LOCKED_ON_PUK.equals(lockedReason)) {
-                simState = IccCardConstants.State.PUK_REQUIRED;
+                mSimState = IccCardConstants.State.PUK_REQUIRED;
             }
             else {
-                simState = IccCardConstants.State.PERSO_LOCKED;
+                mSimState = IccCardConstants.State.NETWORK_LOCKED;
             }
         } else {
-            simState = IccCardConstants.State.UNKNOWN;
+            mSimState = IccCardConstants.State.UNKNOWN;
         }
-        mSimState[sub] = simState;
     }
 
     private final void updateVolume() {
@@ -304,17 +242,17 @@ public class PhoneStatusBarPolicy {
         final String action = intent.getAction();
         final boolean enabled = intent.getBooleanExtra(TtyIntent.TTY_ENABLED, false);
 
-        if (false) Slog.v(TAG, "updateTTY: enabled: " + enabled);
+        if (false) Log.v(TAG, "updateTTY: enabled: " + enabled);
 
         if (enabled) {
             // TTY is on
-            if (false) Slog.v(TAG, "updateTTY: set TTY on");
+            if (false) Log.v(TAG, "updateTTY: set TTY on");
             mService.setIcon("tty", R.drawable.stat_sys_tty_mode, 0,
                     mContext.getString(R.string.accessibility_tty_enabled));
             mService.setIconVisibility("tty", true);
         } else {
             // TTY is off
-            if (false) Slog.v(TAG, "updateTTY: set TTY off");
+            if (false) Log.v(TAG, "updateTTY: set TTY off");
             mService.setIconVisibility("tty", false);
         }
     }
