@@ -2597,7 +2597,7 @@
         <activity android:name="android.accounts.CantAddAccountActivity"
                 android:excludeFromRecents="true"
                 android:exported="true"
-                android:theme="@android:style/Theme.Holo.Dialog.NoActionBar"
+                android:theme="@android:style/Theme.Holo.Dialog"
                 android:process=":ui">
         </activity>
 

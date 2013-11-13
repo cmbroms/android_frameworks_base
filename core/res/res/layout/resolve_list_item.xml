@@ -21,7 +21,8 @@
               android:orientation="horizontal"
               android:layout_height="wrap_content"
               android:layout_width="match_parent"
-              android:background="?attr/activatedBackgroundIndicator">
+              android:background="@android:drawable/activity_picker_bg"
+              android:padding="16dp">
 
     <!-- Activity icon when presenting dialog
          Size will be filled in by ResolverActivity -->
