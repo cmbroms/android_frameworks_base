@@ -30,10 +30,10 @@
     <drawable name="recents_callout_line">#99ffffff</drawable>
     <drawable name="notification_item_background_legacy_color">#ffaaaaaa</drawable>
     <drawable name="heads_up_notification_bg_pressed">#ff33B5E5</drawable>
-    <drawable name="notification_header_bg">#FF000000</drawable>
-    <color name="notification_panel_scrim_color">#B0000000</color>
-    <color name="batterymeter_frame_color">#66FFFFFF</color><!-- 40% white -->
-    <color name="batterymeter_charge_color">#FFFFFFFF</color>
-    <color name="batterymeter_bolt_color">#B2000000</color><!-- 70% black -->
-    <color name="status_bar_clock_color">#FFFFFFFF</color>
+    <drawable name="notification_header_bg">#FFFFFFFF</drawable>
+    <color name="notification_panel_scrim_color">#BFFFFFF</color>
+    <color name="batterymeter_frame_color">#77FFFFFF</color><!-- 40% white -->
+    <color name="batterymeter_charge_color">#FF000000</color>
+    <color name="batterymeter_bolt_color">#B2FFFFFF</color><!-- 70% black -->
+    <color name="status_bar_clock_color">#747474</color>
 </resources>
