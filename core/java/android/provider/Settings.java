@@ -3054,6 +3054,12 @@ public final class Settings {
         public static final String QUIET_HOURS_HAPTIC = "quiet_hours_haptic";
 
         /**
+         * Whether to remove the system sounds during quiet hours.
+         * @hide
+         */
+        public static final String QUIET_HOURS_SYSTEM = "quiet_hours_system";
+
+        /**
          * Whether to remove the vibration from outgoing notifications during quiet hours.
          * @hide
          */
@@ -3407,6 +3413,7 @@ public final class Settings {
             QUIET_HOURS_START,
             QUIET_HOURS_END,
             QUIET_HOURS_MUTE,
+            QUIET_HOURS_SYSTEM,
             QUIET_HOURS_STILL,
             QUIET_HOURS_DIM,
             SYSTEM_PROFILES_ENABLED,
@@ -5416,6 +5423,13 @@ public final class Settings {
         public static final String ADVANCED_REBOOT = "advanced_reboot";
 
         /**
+         * Whether to display the 'Wipe data' and 'Force close' options in the notification
+         * area and in the recent app list
+         * @hide
+         */
+        public static final String DEVELOPMENT_SHORTCUT = "development_shortcut";
+
+        /**
          * Whether newly installed apps should run with privacy guard by default
          * @hide
          */
@@ -5472,7 +5486,8 @@ public final class Settings {
             MOUNT_UMS_NOTIFY_ENABLED,
             UI_NIGHT_MODE,
             ADVANCED_REBOOT,
-            PRIVACY_GUARD_DEFAULT
+            PRIVACY_GUARD_DEFAULT,
+            DEVELOPMENT_SHORTCUT
         };
 
         /**

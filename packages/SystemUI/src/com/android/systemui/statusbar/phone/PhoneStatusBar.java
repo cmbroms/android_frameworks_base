@@ -57,6 +57,7 @@ import android.os.Handler;
 import android.os.IBinder;
 import android.os.IPowerManager;
 import android.os.Message;
+import android.os.PowerManager;
 import android.os.RemoteException;
 import android.os.ServiceManager;
 import android.os.SystemClock;
@@ -94,6 +95,7 @@ import com.android.internal.statusbar.StatusBarIcon;
 import com.android.systemui.DemoMode;
 import com.android.systemui.EventLogTags;
 import com.android.systemui.R;
+import com.android.systemui.BatteryMeterView;
 import com.android.systemui.statusbar.BaseStatusBar;
 import com.android.systemui.statusbar.CommandQueue;
 import com.android.systemui.statusbar.GestureRecorder;
@@ -103,6 +105,7 @@ import com.android.systemui.statusbar.SignalClusterView;
 import com.android.systemui.statusbar.StatusBarIconView;
 import com.android.systemui.statusbar.policy.BatteryController;
 import com.android.systemui.statusbar.policy.BluetoothController;
+import com.android.systemui.statusbar.policy.CircleBattery;
 import com.android.systemui.statusbar.policy.DateView;
 import com.android.systemui.statusbar.policy.HeadsUpNotificationView;
 import com.android.systemui.statusbar.policy.LocationController;
@@ -152,6 +155,11 @@ public class PhoneStatusBar extends BaseStatusBar implements DemoMode {
     private static final float BRIGHTNESS_CONTROL_PADDING = 0.15f;
     private static final int BRIGHTNESS_CONTROL_LONG_PRESS_TIMEOUT = 750; // ms
     private static final int BRIGHTNESS_CONTROL_LINGER_THRESHOLD = 20;
+
+    private static final int BATTERY_STYLE_NORMAL = 0;
+    private static final int BATTERY_STYLE_CIRCLE = 2;
+    private static final int BATTERY_STYLE_CIRCLE_PERCENT = 3;
+    private static final int BATTERY_STYLE_GONE = 4;
 
     // fling gesture tuning parameters, scaled to display density
     private float mSelfExpandVelocityPx; // classic value: 2000px/s
@@ -245,6 +253,9 @@ public class PhoneStatusBar extends BaseStatusBar implements DemoMode {
     private int mNotificationHeaderHeight;
 
     private boolean mShowCarrierInPanel = false;
+
+    private BatteryMeterView mBatteryView;
+    private CircleBattery mCircleBatteryView;
 
     // position
     int[] mPositionTmp = new int[2];
@@ -348,21 +359,14 @@ public class PhoneStatusBar extends BaseStatusBar implements DemoMode {
                     Settings.System.STATUS_BAR_BRIGHTNESS_CONTROL), false, this);
             resolver.registerContentObserver(Settings.System.getUriFor(
                     Settings.System.SCREEN_BRIGHTNESS_MODE), false, this);
-            update();
+            resolver.registerContentObserver(Settings.System.getUriFor(
+                    Settings.System.STATUS_BAR_BATTERY), false, this);
+            updateSettings();
         }
 
         @Override
         public void onChange(boolean selfChange) {
-            update();
-        }
-
-        public void update() {
-            ContentResolver resolver = mContext.getContentResolver();
-            boolean autoBrightness = Settings.System.getInt(
-                    resolver, Settings.System.SCREEN_BRIGHTNESS_MODE, 0) ==
-                    Settings.System.SCREEN_BRIGHTNESS_MODE_AUTOMATIC;
-            mBrightnessControl = !autoBrightness && Settings.System.getInt(
-                    resolver, Settings.System.STATUS_BAR_BRIGHTNESS_CONTROL, 0) == 1;
+            updateSettings();
         }
     }
 
@@ -680,6 +684,9 @@ public class PhoneStatusBar extends BaseStatusBar implements DemoMode {
         final SignalClusterView signalCluster =
                 (SignalClusterView)mStatusBarView.findViewById(R.id.signal_cluster);
 
+        mBatteryView = (BatteryMeterView) mStatusBarView.findViewById(R.id.battery);
+        mCircleBatteryView = (CircleBattery) mStatusBarView.findViewById(R.id.circle_battery);
+        mBatteryController.addStateChangedCallback(mCircleBatteryView);
 
         mNetworkController.addSignalCluster(signalCluster);
         signalCluster.setNetworkController(mNetworkController);
@@ -797,6 +804,10 @@ public class PhoneStatusBar extends BaseStatusBar implements DemoMode {
             }
         }
 
+        PowerManager pm = (PowerManager) mContext.getSystemService(Context.POWER_SERVICE);
+        mBroadcastReceiver.onReceive(mContext,
+                new Intent(pm.isScreenOn() ? Intent.ACTION_SCREEN_ON : Intent.ACTION_SCREEN_OFF));
+
         // receive broadcasts
         IntentFilter filter = new IntentFilter();
         filter.addAction(Intent.ACTION_CLOSE_SYSTEM_DIALOGS);
@@ -814,14 +825,14 @@ public class PhoneStatusBar extends BaseStatusBar implements DemoMode {
     @Override
     protected void onShowSearchPanel() {
         if (mNavigationBarView != null) {
-            mNavigationBarView.transitionCameraAndSearchButtonAlpha(0.0f);
+            mNavigationBarView.getBarTransitions().setContentVisible(false);
         }
     }
 
     @Override
     protected void onHideSearchPanel() {
         if (mNavigationBarView != null) {
-            mNavigationBarView.transitionCameraAndSearchButtonAlpha(1.0f);
+            mNavigationBarView.getBarTransitions().setContentVisible(true);
         }
     }
 
@@ -971,7 +982,7 @@ public class PhoneStatusBar extends BaseStatusBar implements DemoMode {
     }
 
     private void repositionNavigationBar() {
-        if (mNavigationBarView == null) return;
+        if (mNavigationBarView == null || !mNavigationBarView.isAttachedToWindow()) return;
 
         prepareNavigationBarView();
 
@@ -1646,6 +1657,17 @@ public class PhoneStatusBar extends BaseStatusBar implements DemoMode {
         return a;
     }
 
+    public Animator setVisibilityOnStart(
+            final Animator a, final View v, final int vis) {
+        a.addListener(new AnimatorListenerAdapter() {
+            @Override
+            public void onAnimationStart(Animator animation) {
+                v.setVisibility(vis);
+            }
+        });
+        return a;
+    }
+
     public Animator interpolator(TimeInterpolator ti, Animator a) {
         a.setInterpolator(ti);
         return a;
@@ -1711,9 +1733,11 @@ public class PhoneStatusBar extends BaseStatusBar implements DemoMode {
         if (mRibbonView != null && mHasQuickAccessSettings) {
             mRibbonViewAnim = start(
                 startDelay(FLIP_DURATION_OUT * zeroOutDelays,
+                    setVisibilityOnStart(
                         interpolator(mDecelerateInterpolator,
                             ObjectAnimator.ofFloat(mRibbonView, View.SCALE_X, 1f)
-                                .setDuration(FLIP_DURATION_IN))));
+                                .setDuration(FLIP_DURATION_IN)),
+                        mRibbonView, View.VISIBLE)));
         }
         mFlipSettingsViewAnim = start(
             setVisibilityWhenDone(
@@ -2136,8 +2160,7 @@ public class PhoneStatusBar extends BaseStatusBar implements DemoMode {
         return mGestureRec;
     }
 
-    @Override // CommandQueue
-    public void setNavigationIconHints(int hints) {
+    private void setNavigationIconHints(int hints) {
         if (hints == mNavigationIconHints) return;
 
         mNavigationIconHints = hints;
@@ -2286,6 +2309,13 @@ public class PhoneStatusBar extends BaseStatusBar implements DemoMode {
         transitions.transitionTo(mode, anim);
     }
 
+    private void finishBarAnimations() {
+        mStatusBarView.getBarTransitions().finishAnimations();
+        if (mNavigationBarView != null) {
+            mNavigationBarView.getBarTransitions().finishAnimations();
+        }
+    }
+
     private final Runnable mCheckBarModes = new Runnable() {
         @Override
         public void run() {
@@ -2380,7 +2410,7 @@ public class PhoneStatusBar extends BaseStatusBar implements DemoMode {
         boolean altBack = (backDisposition == InputMethodService.BACK_DISPOSITION_WILL_DISMISS)
             || ((vis & InputMethodService.IME_VISIBLE) != 0);
 
-        mCommandQueue.setNavigationIconHints(
+        setNavigationIconHints(
                 altBack ? (mNavigationIconHints | NAVIGATION_HINT_BACK_ALT)
                         : (mNavigationIconHints & ~NAVIGATION_HINT_BACK_ALT));
         if (mQS != null) mQS.setImeWindowStatus(vis > 0);
@@ -2436,9 +2466,12 @@ public class PhoneStatusBar extends BaseStatusBar implements DemoMode {
         }
 
         public void tickerHalting() {
-            mStatusBarContents.setVisibility(View.VISIBLE);
+            if (mStatusBarContents.getVisibility() != View.VISIBLE) {
+                mStatusBarContents.setVisibility(View.VISIBLE);
+                mStatusBarContents
+                        .startAnimation(loadAnim(com.android.internal.R.anim.fade_in, null));
+            }
             mTickerView.setVisibility(View.GONE);
-            mStatusBarContents.startAnimation(loadAnim(com.android.internal.R.anim.fade_in, null));
             // we do not animate the ticker away at this point, just get rid of it (b/6992707)
         }
     }
@@ -2780,6 +2813,7 @@ public class PhoneStatusBar extends BaseStatusBar implements DemoMode {
                 makeExpandedInvisible();
                 notifyNavigationBarScreenOn(false);
                 notifyHeadsUpScreenOn(false);
+                finishBarAnimations();
             }
             else if (Intent.ACTION_SCREEN_ON.equals(action)) {
                 mScreenOn = true;
@@ -2825,10 +2859,31 @@ public class PhoneStatusBar extends BaseStatusBar implements DemoMode {
         animateCollapsePanels();
         updateNotificationIcons();
         resetUserSetupObserver();
+        updateSettings();
         if (mNavigationBarView != null) {
             mNavigationBarView.updateSettings();
         }
         super.userSwitched(newUserId);
+    }
+
+    private void updateSettings() {
+        ContentResolver resolver = mContext.getContentResolver();
+        //XXX: multi-user correct?
+        boolean autoBrightness = Settings.System.getInt(
+                resolver, Settings.System.SCREEN_BRIGHTNESS_MODE, 0) ==
+                Settings.System.SCREEN_BRIGHTNESS_MODE_AUTOMATIC;
+        mBrightnessControl = !autoBrightness && Settings.System.getInt(
+                resolver, Settings.System.STATUS_BAR_BRIGHTNESS_CONTROL, 0) == 1;
+
+        int batteryStyle = Settings.System.getInt(resolver,
+                Settings.System.STATUS_BAR_BATTERY, BATTERY_STYLE_NORMAL);
+        boolean meterVisible = batteryStyle == BATTERY_STYLE_NORMAL;
+        boolean circleVisible = batteryStyle == BATTERY_STYLE_CIRCLE
+                || batteryStyle == BATTERY_STYLE_CIRCLE_PERCENT;
+
+        mBatteryView.setVisibility(meterVisible ? View.VISIBLE : View.GONE);
+        mCircleBatteryView.setVisibility(circleVisible ? View.VISIBLE : View.GONE);
+        mCircleBatteryView.setShowPercent(batteryStyle == BATTERY_STYLE_CIRCLE_PERCENT);
     }
 
     private void resetUserSetupObserver() {
