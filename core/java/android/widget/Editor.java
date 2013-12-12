@@ -2640,7 +2640,7 @@ public class Editor {
                 final float BACKGROUND_TRANSPARENCY = 0.4f;
                 final int newAlpha = (int) (Color.alpha(underlineColor) * BACKGROUND_TRANSPARENCY);
                 mSuggestionRangeSpan.setBackgroundColor(
-                        (underlineColor & 0xFF33b5e5) + (newAlpha << 24));
+                        (underlineColor & 0xFFFFFFFF) + (newAlpha << 24));
             }
             spannable.setSpan(mSuggestionRangeSpan, spanUnionStart, spanUnionEnd,
                     Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
