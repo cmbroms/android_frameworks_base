@@ -2423,7 +2423,7 @@ public class Editor {
                 suggestionInfo.suggestionIndex == DELETE_TEXT) {
                     textView.setBackgroundColor(Color.TRANSPARENT);
                 } else {
-                    textView.setBackgroundColor(Color.WHITE);
+                    textView.setBackgroundColor(Color.BLACK);
                 }
 
                 return textView;
