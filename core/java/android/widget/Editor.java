@@ -2421,7 +2421,7 @@ public class Editor {
 
                 if (suggestionInfo.suggestionIndex == ADD_TO_DICTIONARY ||
                 suggestionInfo.suggestionIndex == DELETE_TEXT) {
-                    textView.setBackgroundColor(Color.BLACK);
+                    textView.setBackgroundColor(Color.WHITE);
                 } else {
                     textView.setBackgroundColor(Color.BLACK);
                 }
