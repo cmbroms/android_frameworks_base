@@ -90,7 +90,7 @@ public class PlatLogoActivity extends Activity {
         letter.setTextSize(mIsCM ? 150 : 300);
         letter.setTextColor(0xFFFFFFFF);
         letter.setGravity(Gravity.CENTER);
-        letter.setText(mIsCM ? "CMB" : "K");
+        letter.setText(mIsCM ? "CM" : "K");
 
         String cmVersion = SystemProperties.get("ro.cm.version");
         if (cmVersion != null) {
@@ -105,7 +105,7 @@ public class PlatLogoActivity extends Activity {
         tv.setPadding(p, p, p, p);
         tv.setTextColor(0xFFFFFFFF);
         tv.setGravity(Gravity.CENTER);
-        tv.setText(mIsCM ? "CMB Roms " + cmVersion : "ANDROID " + Build.VERSION.RELEASE);
+        tv.setText(mIsCM ? "CyanogenMod " + cmVersion : "ANDROID " + Build.VERSION.RELEASE);
         tv.setVisibility(View.INVISIBLE);
 
         mContent.addView(bg);
