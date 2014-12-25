@@ -44,6 +44,7 @@ public class BarTransitions {
     public static final int MODE_TRANSLUCENT = 2;
     public static final int MODE_LIGHTS_OUT = 3;
     public static final int MODE_TRANSPARENT = 4;
+    public static final int MODE_WARNING = 5;
 
     public static final int LIGHTS_IN_DURATION = 250;
     public static final int LIGHTS_OUT_DURATION = 750;
@@ -55,24 +56,13 @@ public class BarTransitions {
 
     private int mMode;
 
-    public BarTransitions(View view, int gradientResourceId, int opaqueColorResourceId,
-            int semiTransparentColorResourceId) {
+    public BarTransitions(View view, int gradientResourceId) {
         mTag = "BarTransitions." + view.getClass().getSimpleName();
         mView = view;
-        mBarBackground = new BarBackgroundDrawable(mView.getContext(), gradientResourceId,
-                opaqueColorResourceId, semiTransparentColorResourceId);
+        mBarBackground = new BarBackgroundDrawable(mView.getContext(), gradientResourceId);
         if (HIGH_END) {
             mView.setBackground(mBarBackground);
         }
-    }
-
-    protected void setGradientResourceId(int gradientResourceId) {
-        mBarBackground.setGradientResourceId(mView.getContext().getResources(),
-                gradientResourceId);
-    }
-
-    public void updateResources(Resources res) {
-        mBarBackground.updateResources(res);
     }
 
     public int getMode() {
@@ -81,7 +71,8 @@ public class BarTransitions {
 
     public void transitionTo(int mode, boolean animate) {
         // low-end devices do not support translucent modes, fallback to opaque
-        if (!HIGH_END && (mode == MODE_SEMI_TRANSPARENT || mode == MODE_TRANSLUCENT)) {
+        if (!HIGH_END && (mode == MODE_SEMI_TRANSPARENT || mode == MODE_TRANSLUCENT
+                || mode == MODE_TRANSPARENT)) {
             mode = MODE_OPAQUE;
         }
         if (mMode == mode) return;
@@ -110,7 +101,7 @@ public class BarTransitions {
         if (mode == MODE_TRANSLUCENT) return "MODE_TRANSLUCENT";
         if (mode == MODE_LIGHTS_OUT) return "MODE_LIGHTS_OUT";
         if (mode == MODE_TRANSPARENT) return "MODE_TRANSPARENT";
-        if (DEBUG && mode == -1) return "-1";
+        if (mode == MODE_WARNING) return "MODE_WARNING";
         throw new IllegalArgumentException("Unknown mode " + mode);
     }
 
@@ -118,23 +109,14 @@ public class BarTransitions {
         mBarBackground.finishAnimation();
     }
 
-    public void setContentVisible(boolean visible) {
-        // for subclasses
-    }
-
-    public void applyTransparent(boolean sticky) {
-        // for subclasses
-    }
-
     private static class BarBackgroundDrawable extends Drawable {
-        private int mGradientResourceId;
-        private final int mOpaqueColorResourceId;
-        private final int mSemiTransparentColorResourceId;
+        private final int mOpaque;
+        private final int mSemiTransparent;
+        private final int mTransparent;
+        private final int mWarning;
+        private final Drawable mGradient;
         private final TimeInterpolator mInterpolator;
 
-        private int mOpaque;
-        private int mSemiTransparent;
-        private Drawable mGradient;
         private int mMode = -1;
         private boolean mAnimating;
         private long mStartTime;
@@ -146,37 +128,21 @@ public class BarTransitions {
         private int mGradientAlphaStart;
         private int mColorStart;
 
-        public BarBackgroundDrawable(Context context, int gradientResourceId,
-                int opaqueColorResourceId, int semiTransparentColorResourceId) {
+        public BarBackgroundDrawable(Context context, int gradientResourceId) {
             final Resources res = context.getResources();
             if (DEBUG_COLORS) {
                 mOpaque = 0xff0000ff;
                 mSemiTransparent = 0x7f0000ff;
+                mTransparent = 0x2f0000ff;
+                mWarning = 0xffff0000;
             } else {
-                mOpaque = res.getColor(opaqueColorResourceId);
-                mSemiTransparent = res.getColor(semiTransparentColorResourceId);
+                mOpaque = res.getColor(R.color.system_bar_background_opaque);
+                mSemiTransparent = res.getColor(R.color.system_bar_background_semi_transparent);
+                mTransparent = res.getColor(R.color.system_bar_background_transparent);
+                mWarning = res.getColor(com.android.internal.R.color.battery_saver_mode_color);
             }
             mGradient = res.getDrawable(gradientResourceId);
             mInterpolator = new LinearInterpolator();
-            mGradientResourceId = gradientResourceId;
-            mOpaqueColorResourceId = opaqueColorResourceId;
-            mSemiTransparentColorResourceId = semiTransparentColorResourceId;
-        }
-
-        public void setGradientResourceId(Resources res, int gradientResourceId) {
-            mGradient = res.getDrawable(gradientResourceId);
-            mGradientResourceId = gradientResourceId;
-        }
-
-        public void updateResources(Resources res)  {
-            mOpaque = res.getColor(mOpaqueColorResourceId);
-            mSemiTransparent = res.getColor(mSemiTransparentColorResourceId);
-            // Retrieve the current bounds for mGradient so they can be set to
-            // the new drawable being loaded, otherwise the bounds will be (0, 0, 0, 0)
-            // and the gradient will not be drawn.
-            Rect bounds = mGradient.getBounds();
-            mGradient = res.getDrawable(mGradientResourceId);
-            mGradient.setBounds(bounds);
         }
 
         @Override
@@ -224,12 +190,14 @@ public class BarTransitions {
         @Override
         public void draw(Canvas canvas) {
             int targetGradientAlpha = 0, targetColor = 0;
-            if (mMode == MODE_TRANSLUCENT) {
-                targetGradientAlpha = 0xff;
+            if (mMode == MODE_WARNING) {
+                targetColor = mWarning;
+            } else if (mMode == MODE_TRANSLUCENT) {
+                targetColor = mSemiTransparent;
             } else if (mMode == MODE_SEMI_TRANSPARENT) {
                 targetColor = mSemiTransparent;
             } else if (mMode == MODE_TRANSPARENT) {
-                targetGradientAlpha = 0;
+                targetColor = mTransparent;
             } else {
                 targetColor = mOpaque;
             }

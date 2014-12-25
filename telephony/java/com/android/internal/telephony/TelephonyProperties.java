@@ -1,6 +1,4 @@
 /*
- * Copyright (c) 2012-2013 The Linux Foundation. All rights reserved.
- * Not a Contribution.
  * Copyright (C) 2006 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -90,11 +88,6 @@ public interface TelephonyProperties
      */
     static final String PROPERTY_LTE_ON_CDMA_DEVICE = "telephony.lteOnCdmaDevice";
 
-    /**
-     * {@see BaseCommands#getLteOnGsmMode()}
-     */
-    static final String PROPERTY_LTE_ON_GSM_DEVICE = "telephony.lteOnGsmDevice";
-
     static final String CURRENT_ACTIVE_PHONE = "gsm.current.phone-type";
 
     //****** SIM Card
@@ -116,6 +109,12 @@ public interface TelephonyProperties
      */
     static String PROPERTY_APN_SIM_OPERATOR_NUMERIC = "gsm.apn.sim.operator.numeric";
 
+    /** The MCC+MNC (mobile country code+mobile network code) of the
+     *  provider of the CDMA RUIM/CSIM to be used for APNs lookup. 5 or 6 decimal digits.
+     *  Availability: RUIM state must be "READY"
+     */
+    static String PROPERTY_APN_RUIM_OPERATOR_NUMERIC = "net.cdma.ruim.operator.numeric";
+
     /** PROPERTY_ICC_OPERATOR_ALPHA is also known as the SPN, or Service Provider Name.
      *  Availability: SIM state must be "READY"
      */
@@ -136,13 +135,18 @@ public interface TelephonyProperties
     /** Indicate the timer value for exiting emergency callback mode */
     static final String PROPERTY_ECM_EXIT_TIMER = "ro.cdma.ecmexittimer";
 
-    /** The international dialing prefix conversion string */
-    static final String PROPERTY_IDP_STRING = "ro.cdma.idpstring";
+    /** the international dialing prefix of current operator network */
+    static final String PROPERTY_OPERATOR_IDP_STRING = "gsm.operator.idpstring";
 
     /**
      * Defines the schema for the carrier specified OTASP number
      */
     static final String PROPERTY_OTASP_NUM_SCHEMA = "ro.cdma.otaspnumschema";
+
+    /**
+     * Defines it is an OMH card or not.
+     */
+    static final String PROPERTY_RUIM_OMH_CARD = "ril.cdma.omhcard";
 
     /**
      * Disable all calls including Emergency call when it set to true.
@@ -197,32 +201,11 @@ public interface TelephonyProperties
     static final String PROPERTY_TEST_CSIM = "persist.radio.test-csim";
 
     /**
-     * Specify if Android supports VoLTE/VT calls on IMS
-     */
-    static final String CALLS_ON_IMS_ENABLED_PROPERTY = "persist.radio.calls.on.ims";
-
-    /**
-     * Specify if Android supports CSVT calls.
-     */
-    static final String PROPERTY_CSVT_ENABLED = "persist.radio.csvt.enabled";
-
-    /**
      * Ignore RIL_UNSOL_NITZ_TIME_RECEIVED completely, used for debugging/testing.
      */
     static final String PROPERTY_IGNORE_NITZ = "telephony.test.ignore.nitz";
 
     /**
-     * Set to true to indicates support for simultaneous voice and EvDo.
-     */
-    static final String PROPERTY_SVDO = "ro.ril.svdo";
-
-    /**
-     * Property to control alpha ID display for proactive commands
-     * Type: boolean ( true = alpha display enabled, false = alpha display disabled)
-     */
-    static final String PROPERTY_ALPHA_USRCNF = "persist.atel.noalpha.usrcnf";
-
-     /**
      * Property to set multi sim feature.
      * Type:  String(dsds, dsda)
      */
@@ -238,4 +221,26 @@ public interface TelephonyProperties
      * Type: string ( default = silent, enable to = prompt )
      */
     static final String PROPERTY_MMS_TRANSACTION = "mms.transaction";
+
+    /**
+     * Set to the sim count.
+     */
+    static final String PROPERTY_SIM_COUNT = "ro.telephony.sim.count";
+
+    /**
+     * Enable VoLTE/VT over IMS: debug option
+     * If 1: use IMS if provisioned/registered etc (i.e. standard operation)
+     * If 0: use CS.
+     * If missing: use 0
+     */
+    static final String PROPERTY_DBG_IMS_VOLTE_ENABLE = "persist.dbg.ims_volte_enable";
+
+    static final String EXTRAS_IS_CONFERENCE_URI = "isConferenceUri";
+
+    static final String EXTRA_DIAL_CONFERENCE_URI =
+            "org.codeaurora.extra.DIAL_CONFERENCE_URI";
+    static final String ADD_PARTICIPANT_KEY = "add_participant";
+
+    static final String EXTRA_SKIP_SCHEMA_PARSING =
+            "org.codeaurora.extra.SKIP_SCHEMA_PARSING";
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2011 The Android Open Source Project
+ * Copyright (C) 2014 The CyanogenMod Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -426,7 +426,7 @@ public class ProfileManager {
     /** @hide */
     public ProfileGroup getActiveProfileGroup(String packageName) {
         NotificationGroup notificationGroup = getNotificationGroupForPackage(packageName);
-        if(notificationGroup == null){
+        if (notificationGroup == null) {
             ProfileGroup defaultGroup = getActiveProfile().getDefaultGroup();
             return defaultGroup;
         }

@@ -17,28 +17,24 @@
 package com.android.keyguard;
 
 import android.content.Context;
-import android.provider.Settings;
-import android.text.Editable;
-import android.text.InputType;
-import android.text.TextWatcher;
-import android.text.method.DigitsKeyListener;
 import android.util.AttributeSet;
 import android.view.View;
-import android.widget.LinearLayout;
-import android.widget.TextView.OnEditorActionListener;
-
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.List;
+import android.view.ViewGroup;
+import android.view.animation.AnimationUtils;
 
 /**
  * Displays a PIN pad for unlocking.
  */
-public class KeyguardPINView extends KeyguardAbsKeyInputView
-        implements KeyguardSecurityView, OnEditorActionListener, TextWatcher {
+public class KeyguardPINView extends KeyguardPinBasedInputView {
 
-    private static List<Integer> sNumbers = Arrays.asList(1, 2, 3, 4, 5, 6, 7, 8, 9, 0);
+    private final AppearAnimationUtils mAppearAnimationUtils;
+    private ViewGroup mKeyguardBouncerFrame;
+    private ViewGroup mRow0;
+    private ViewGroup mRow1;
+    private ViewGroup mRow2;
+    private ViewGroup mRow3;
+    private View mDivider;
+    private int mDisappearYTranslation;
 
     public KeyguardPINView(Context context) {
         this(context, null);
@@ -46,15 +42,18 @@ public class KeyguardPINView extends KeyguardAbsKeyInputView
 
     public KeyguardPINView(Context context, AttributeSet attrs) {
         super(context, attrs);
+        mAppearAnimationUtils = new AppearAnimationUtils(context);
+        mDisappearYTranslation = getResources().getDimensionPixelSize(
+                R.dimen.disappear_y_translation);
     }
 
     protected void resetState() {
-        if (KeyguardUpdateMonitor.getInstance(getContext()).getMaxBiometricUnlockAttemptsReached()) {
+        super.resetState();
+        if (KeyguardUpdateMonitor.getInstance(mContext).getMaxBiometricUnlockAttemptsReached()) {
             mSecurityMessageDisplay.setMessage(R.string.faceunlock_multiple_failures, true);
         } else {
             mSecurityMessageDisplay.setMessage(R.string.kg_pin_instructions, false);
         }
-        mPasswordEntry.setEnabled(true);
     }
 
     @Override
@@ -65,81 +64,13 @@ public class KeyguardPINView extends KeyguardAbsKeyInputView
     @Override
     protected void onFinishInflate() {
         super.onFinishInflate();
-        final View ok = findViewById(R.id.key_enter);
-        if (ok != null) {
-            ok.setOnClickListener(new View.OnClickListener() {
-                @Override
-                public void onClick(View v) {
-                    doHapticKeyClick();
-                    if (mPasswordEntry.isEnabled()) {
-                        verifyPasswordAndUnlock();
-                    }
-                }
-            });
-            ok.setOnHoverListener(new LiftToActivateListener(getContext()));
-        }
 
-        boolean scramblePin = (Settings.System.getInt(getContext().getContentResolver(),
-                Settings.System.LOCKSCREEN_PIN_SCRAMBLE_LAYOUT, 0) == 1);
-
-        if (scramblePin) {
-            Collections.shuffle(sNumbers);
-            // get all children who are NumPadKey's
-            LinearLayout bouncer = (LinearLayout) findViewById(R.id.keyguard_bouncer_frame);
-            List<NumPadKey> views = new ArrayList<NumPadKey>();
-            for (int i = 0; i < bouncer.getChildCount(); i++) {
-                if (bouncer.getChildAt(i) instanceof LinearLayout) {
-                    LinearLayout nestedLayout = ((LinearLayout) bouncer.getChildAt(i));
-                    for (int j = 0; j < nestedLayout.getChildCount(); j++){
-                        View view = nestedLayout.getChildAt(j);
-                        if (view.getClass() == NumPadKey.class) {
-                            views.add((NumPadKey) view);
-                        }
-                    }
-                }
-            }
-
-            // reset the digits in the views
-            for (int i = 0; i < sNumbers.size(); i++) {
-                NumPadKey view = views.get(i);
-                view.setDigit(sNumbers.get(i));
-            }
-        }
-
-        // The delete button is of the PIN keyboard itself in some (e.g. tablet) layouts,
-        // not a separate view
-        View pinDelete = findViewById(R.id.delete_button);
-        if (pinDelete != null) {
-            pinDelete.setVisibility(View.VISIBLE);
-            pinDelete.setOnClickListener(new OnClickListener() {
-                public void onClick(View v) {
-                    // check for time-based lockouts
-                    if (mPasswordEntry.isEnabled()) {
-                        CharSequence str = mPasswordEntry.getText();
-                        if (str.length() > 0) {
-                            mPasswordEntry.setText(str.subSequence(0, str.length()-1));
-                        }
-                    }
-                    doHapticKeyClick();
-                }
-            });
-            pinDelete.setOnLongClickListener(new View.OnLongClickListener() {
-                public boolean onLongClick(View v) {
-                    // check for time-based lockouts
-                    if (mPasswordEntry.isEnabled()) {
-                        mPasswordEntry.setText("");
-                    }
-                    doHapticKeyClick();
-                    return true;
-                }
-            });
-        }
-
-        mPasswordEntry.setKeyListener(DigitsKeyListener.getInstance());
-        mPasswordEntry.setInputType(InputType.TYPE_CLASS_NUMBER
-                | InputType.TYPE_NUMBER_VARIATION_PASSWORD);
-
-        mPasswordEntry.requestFocus();
+        mKeyguardBouncerFrame = (ViewGroup) findViewById(R.id.keyguard_bouncer_frame);
+        mRow0 = (ViewGroup) findViewById(R.id.row0);
+        mRow1 = (ViewGroup) findViewById(R.id.row1);
+        mRow2 = (ViewGroup) findViewById(R.id.row2);
+        mRow3 = (ViewGroup) findViewById(R.id.row3);
+        mDivider = findViewById(R.id.divider);
     }
 
     @Override
@@ -149,5 +80,67 @@ public class KeyguardPINView extends KeyguardAbsKeyInputView
     @Override
     public int getWrongPasswordStringId() {
         return R.string.kg_wrong_pin;
+    }
+
+    @Override
+    public void startAppearAnimation() {
+        enableClipping(false);
+        setAlpha(1f);
+        setTranslationY(mAppearAnimationUtils.getStartTranslation());
+        animate()
+                .setDuration(500)
+                .setInterpolator(mAppearAnimationUtils.getInterpolator())
+                .translationY(0);
+        mAppearAnimationUtils.startAppearAnimation(new View[][] {
+                new View[] {
+                        mRow0, null, null
+                },
+                new View[] {
+                        findViewById(R.id.key1), findViewById(R.id.key2), findViewById(R.id.key3)
+                },
+                new View[] {
+                        findViewById(R.id.key4), findViewById(R.id.key5), findViewById(R.id.key6)
+                },
+                new View[] {
+                        findViewById(R.id.key7), findViewById(R.id.key8), findViewById(R.id.key9)
+                },
+                new View[] {
+                        null, findViewById(R.id.key0), findViewById(R.id.key_enter)
+                },
+                new View[] {
+                        null, mEcaView, null
+                }},
+                new Runnable() {
+                    @Override
+                    public void run() {
+                        enableClipping(true);
+                    }
+                });
+    }
+
+    @Override
+    public boolean startDisappearAnimation(Runnable finishRunnable) {
+        animate()
+                .alpha(0f)
+                .translationY(mDisappearYTranslation)
+                .setInterpolator(AnimationUtils
+                        .loadInterpolator(mContext, android.R.interpolator.fast_out_linear_in))
+                .setDuration(100)
+                .withEndAction(finishRunnable);
+        return true;
+    }
+
+    private void enableClipping(boolean enable) {
+        mKeyguardBouncerFrame.setClipToPadding(enable);
+        mKeyguardBouncerFrame.setClipChildren(enable);
+        mRow1.setClipToPadding(enable);
+        mRow2.setClipToPadding(enable);
+        mRow3.setClipToPadding(enable);
+        setClipChildren(enable);
+    }
+
+    @Override
+    public boolean hasOverlappingRendering() {
+        return false;
     }
 }

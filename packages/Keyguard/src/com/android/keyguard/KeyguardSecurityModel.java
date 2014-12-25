@@ -1,6 +1,4 @@
 /*
- * Copyright (c) 2013, The Linux Foundation. All rights reserved.
- * Not a Contribution.
  * Copyright (C) 2012 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -20,18 +18,18 @@ package com.android.keyguard;
 import android.app.Profile;
 import android.app.admin.DevicePolicyManager;
 import android.content.Context;
-import android.telephony.MSimTelephonyManager;
 import android.telephony.TelephonyManager;
 
 import com.android.internal.telephony.IccCardConstants;
 import com.android.internal.widget.LockPatternUtils;
 
 public class KeyguardSecurityModel {
+
     /**
      * The different types of security available for {@link Mode#UnlockScreen}.
      * @see com.android.internal.policy.impl.LockPatternKeyguardView#getUnlockMode()
      */
-    enum SecurityMode {
+    public enum SecurityMode {
         Invalid, // NULL state
         None, // No security enabled
         Pattern, // Unlock by drawing a pattern.
@@ -79,21 +77,17 @@ public class KeyguardSecurityModel {
 
     SecurityMode getSecurityMode() {
         KeyguardUpdateMonitor updateMonitor = KeyguardUpdateMonitor.getInstance(mContext);
-        IccCardConstants.State simState = updateMonitor.getSimState();
-
-        int numPhones = MSimTelephonyManager.getDefault().getPhoneCount();
-        for (int i = 0; i < numPhones; i++) {
-            simState = updateMonitor.getSimState(i);
-            // We are intereseted only in PIN_REQUIRED or PUK_REQUIRED
-            // So continue to the next sub if the sim state is other
-            // than these two.
+        IccCardConstants.State simState = IccCardConstants.State.UNKNOWN;
+        SecurityMode mode = SecurityMode.None;
+        for (int i = 0; i < updateMonitor.getNumPhones(); i++) {
+            long subId = updateMonitor.getSubIdByPhoneId(i);
+            simState = updateMonitor.getSimState(subId);
             if (simState == IccCardConstants.State.PIN_REQUIRED
-                    || simState == IccCardConstants.State.PUK_REQUIRED) {
+                || simState == IccCardConstants.State.PUK_REQUIRED) {
                 break;
             }
         }
 
-        SecurityMode mode = SecurityMode.None;
         if (simState == IccCardConstants.State.PIN_REQUIRED) {
             mode = SecurityMode.SimPin;
         } else if (simState == IccCardConstants.State.PUK_REQUIRED
@@ -103,6 +97,7 @@ public class KeyguardSecurityModel {
             final int security = mLockPatternUtils.getKeyguardStoredPasswordQuality();
             switch (security) {
                 case DevicePolicyManager.PASSWORD_QUALITY_NUMERIC:
+                case DevicePolicyManager.PASSWORD_QUALITY_NUMERIC_COMPLEX:
                     mode = mLockPatternUtils.isLockPasswordEnabled() ?
                             SecurityMode.PIN : SecurityMode.None;
                     break;
@@ -122,7 +117,7 @@ public class KeyguardSecurityModel {
                     break;
 
                 default:
-                    throw new IllegalStateException("Unknown unlock mode:" + mode);
+                    throw new IllegalStateException("Unknown security quality:" + security);
             }
         }
         return mode;

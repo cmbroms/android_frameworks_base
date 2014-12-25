@@ -20,7 +20,6 @@ import android.app.Notification;
 import android.content.Context;
 import android.content.pm.PackageManager;
 import android.content.res.Resources;
-import android.content.res.ThemeConfig;
 import android.database.ContentObserver;
 import android.graphics.Canvas;
 import android.graphics.Paint;
@@ -69,10 +68,7 @@ public class StatusBarIconView extends AnimatedImageView {
         mNumberPain.setAntiAlias(true);
         mNumberPain.setTypeface(Typeface.DEFAULT_BOLD);
         mNumberPain.setTextSize(scaledPx);
-        mNotification = notification;
-        mShowNotificationCount = Settings.System.getIntForUser(mContext.getContentResolver(),
-                Settings.System.STATUS_BAR_NOTIF_COUNT, 0, UserHandle.USER_CURRENT) == 1;
-        setContentDescription(notification);
+        setNotification(notification);
 
         mObserver = GlobalSettingsObserver.getInstance(context);
 
@@ -87,6 +83,13 @@ public class StatusBarIconView extends AnimatedImageView {
         }
 
         setScaleType(ImageView.ScaleType.CENTER);
+    }
+
+    public void setNotification(Notification notification) {
+        mNotification = notification;
+        mShowNotificationCount = Settings.System.getIntForUser(mContext.getContentResolver(),
+                Settings.System.STATUS_BAR_NOTIF_COUNT, 0, UserHandle.USER_CURRENT) == 1;
+        setContentDescription(notification);
     }
 
     public StatusBarIconView(Context context, AttributeSet attrs) {
@@ -195,14 +198,8 @@ public class StatusBarIconView extends AnimatedImageView {
                 if (userId == UserHandle.USER_ALL) {
                     userId = UserHandle.USER_OWNER;
                 }
-                PackageManager pm = context.getPackageManager();
-                final ThemeConfig config = context.getResources().getConfiguration().themeConfig;
-                if (config != null) {
-                    final String pkgName = config.getOverlayPkgNameForApp(context.getPackageName());
-                    r = pm.getThemedResourcesForApplicationAsUser(icon.iconPackage, pkgName, userId);
-                } else {
-                    r = context.getResources();
-                }
+                r = context.getPackageManager()
+                        .getResourcesForApplicationAsUser(icon.iconPackage, userId);
             } catch (PackageManager.NameNotFoundException ex) {
                 Log.e(TAG, "Icon package not found: " + icon.iconPackage);
                 return null;
@@ -236,10 +233,6 @@ public class StatusBarIconView extends AnimatedImageView {
         if (mNotification != null) {
             event.setParcelableData(mNotification);
         }
-    }
-
-    public String getStatusBarSlot() {
-        return mSlot;
     }
 
     @Override
@@ -287,10 +280,10 @@ public class StatusBarIconView extends AnimatedImageView {
 
     void placeNumber() {
         final String str;
-        final int tooBig = mContext.getResources().getInteger(
+        final int tooBig = getContext().getResources().getInteger(
                 android.R.integer.status_bar_notification_info_maxnum);
         if (mIcon.number > tooBig) {
-            str = mContext.getResources().getString(
+            str = getContext().getResources().getString(
                         android.R.string.status_bar_notification_info_overflow);
         } else {
             NumberFormat f = NumberFormat.getIntegerInstance();
@@ -384,3 +377,4 @@ public class StatusBarIconView extends AnimatedImageView {
         }
     }
 }
+

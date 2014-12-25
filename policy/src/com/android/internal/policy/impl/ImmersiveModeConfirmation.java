@@ -19,21 +19,21 @@ package com.android.internal.policy.impl;
 import android.animation.ArgbEvaluator;
 import android.animation.ValueAnimator;
 import android.app.ActivityManager;
+import android.app.ActivityManagerNative;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
-import android.content.pm.ThemeUtils;
 import android.graphics.PixelFormat;
 import android.graphics.drawable.ColorDrawable;
 import android.os.Handler;
 import android.os.Message;
+import android.os.RemoteException;
 import android.os.UserHandle;
 import android.provider.Settings;
-import android.text.TextUtils;
-import android.util.ArraySet;
 import android.util.DisplayMetrics;
 import android.util.Slog;
+import android.util.SparseBooleanArray;
 import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
@@ -47,8 +47,6 @@ import android.widget.FrameLayout;
 
 import com.android.internal.R;
 
-import java.util.Arrays;
-
 /**
  *  Helper to manage showing/hiding a confirmation prompt when the navigation bar is hidden
  *  entering immersive mode.
@@ -57,18 +55,16 @@ public class ImmersiveModeConfirmation {
     private static final String TAG = "ImmersiveModeConfirmation";
     private static final boolean DEBUG = false;
     private static final boolean DEBUG_SHOW_EVERY_TIME = false; // super annoying, use with caution
+    private static final String CONFIRMED = "confirmed";
 
     private final Context mContext;
     private final H mHandler;
-    private final ArraySet<String> mConfirmedPackages = new ArraySet<String>();
     private final long mShowDelayMs;
 
+    private boolean mConfirmed;
     private ClingWindowView mClingWindow;
-    private String mLastPackage;
-    private String mPromptPackage;
     private WindowManager mWindowManager;
-    private boolean mStatusBarHidden;
-    private Context mUiContext;
+    private int mCurrentUserId;
 
     public ImmersiveModeConfirmation(Context context) {
         mContext = context;
@@ -76,12 +72,6 @@ public class ImmersiveModeConfirmation {
         mShowDelayMs = getNavBarExitDuration() * 3;
         mWindowManager = (WindowManager)
                 mContext.getSystemService(Context.WINDOW_SERVICE);
-        ThemeUtils.registerThemeChangeReceiver(context, new BroadcastReceiver() {
-            @Override
-            public void onReceive(Context context, Intent intent) {
-                mUiContext = null;
-            }
-        });
     }
 
     private long getNavBarExitDuration() {
@@ -89,71 +79,63 @@ public class ImmersiveModeConfirmation {
         return exit != null ? exit.getDuration() : 0;
     }
 
-    public void loadSetting() {
-        if (DEBUG) Slog.d(TAG, "loadSetting()");
-        mConfirmedPackages.clear();
-        String packages = null;
+    public void loadSetting(int currentUserId) {
+        mConfirmed = false;
+        mCurrentUserId = currentUserId;
+        String value = null;
         try {
-            packages = Settings.Secure.getStringForUser(mContext.getContentResolver(),
+            value = Settings.Secure.getStringForUser(mContext.getContentResolver(),
                     Settings.Secure.IMMERSIVE_MODE_CONFIRMATIONS,
                     UserHandle.USER_CURRENT);
-            if (packages != null) {
-                mConfirmedPackages.addAll(Arrays.asList(packages.split(",")));
-                if (DEBUG) Slog.d(TAG, "Loaded mConfirmedPackages=" + mConfirmedPackages);
-            }
+            mConfirmed = CONFIRMED.equals(value);
+            if (DEBUG) Slog.d(TAG, "Loaded mConfirmed=" + mConfirmed);
         } catch (Throwable t) {
-            Slog.w(TAG, "Error loading confirmations, packages=" + packages, t);
+            Slog.w(TAG, "Error loading confirmations, value=" + value, t);
         }
     }
 
     private void saveSetting() {
         if (DEBUG) Slog.d(TAG, "saveSetting()");
         try {
-            final String packages = TextUtils.join(",", mConfirmedPackages);
+            final String value = mConfirmed ? CONFIRMED : null;
             Settings.Secure.putStringForUser(mContext.getContentResolver(),
                     Settings.Secure.IMMERSIVE_MODE_CONFIRMATIONS,
-                    packages,
+                    value,
                     UserHandle.USER_CURRENT);
-            if (DEBUG) Slog.d(TAG, "Saved packages=" + packages);
+            if (DEBUG) Slog.d(TAG, "Saved value=" + value);
         } catch (Throwable t) {
-            Slog.w(TAG, "Error saving confirmations, mConfirmedPackages=" + mConfirmedPackages, t);
+            Slog.w(TAG, "Error saving confirmations, mConfirmed=" + mConfirmed, t);
         }
     }
 
-    public void immersiveModeChanged(String pkg, boolean isImmersiveMode, boolean statusBarHidden) {
-        if (pkg == null) {
-            return;
-        }
+    public void immersiveModeChanged(String pkg, boolean isImmersiveMode,
+            boolean userSetupComplete) {
         mHandler.removeMessages(H.SHOW);
         if (isImmersiveMode) {
-            mLastPackage = pkg;
-            mStatusBarHidden = statusBarHidden;
-            if (DEBUG_SHOW_EVERY_TIME || !mConfirmedPackages.contains(pkg)) {
-                mHandler.sendMessageDelayed(mHandler.obtainMessage(H.SHOW, pkg), mShowDelayMs);
+            final boolean disabled = PolicyControl.disableImmersiveConfirmation(pkg);
+            if (DEBUG) Slog.d(TAG, String.format("immersiveModeChanged() disabled=%s mConfirmed=%s",
+                    disabled, mConfirmed));
+            if (!disabled && (DEBUG_SHOW_EVERY_TIME || !mConfirmed) && userSetupComplete) {
+                mHandler.sendEmptyMessageDelayed(H.SHOW, mShowDelayMs);
             }
         } else {
-            mLastPackage = null;
             mHandler.sendEmptyMessage(H.HIDE);
         }
     }
 
     public void confirmCurrentPrompt() {
-        mHandler.post(confirmAction(mPromptPackage));
+        if (mClingWindow != null) {
+            if (DEBUG) Slog.d(TAG, "confirmCurrentPrompt()");
+            mHandler.post(mConfirm);
+        }
     }
 
     private void handleHide() {
         if (mClingWindow != null) {
-            if (DEBUG) Slog.d(TAG, "Hiding immersive mode confirmation for " + mPromptPackage);
+            if (DEBUG) Slog.d(TAG, "Hiding immersive mode confirmation");
             mWindowManager.removeView(mClingWindow);
             mClingWindow = null;
         }
-    }
-
-    private Context getUiContext() {
-        if (mUiContext == null) {
-            mUiContext = ThemeUtils.createUiContext(mContext);
-        }
-        return mUiContext != null ? mUiContext : mContext;
     }
 
     public WindowManager.LayoutParams getClingWindowLayoutParams() {
@@ -175,17 +157,11 @@ public class ImmersiveModeConfirmation {
     }
 
     public FrameLayout.LayoutParams getBubbleLayoutParams() {
-        int gravity = Gravity.CENTER_HORIZONTAL;
-        if (mStatusBarHidden) {
-            gravity |= Gravity.TOP;
-        } else {
-            gravity |= Gravity.BOTTOM;
-        }
         return new FrameLayout.LayoutParams(
                 mContext.getResources().getDimensionPixelSize(
                         R.dimen.immersive_mode_cling_width),
                 ViewGroup.LayoutParams.WRAP_CONTENT,
-                gravity);
+                Gravity.CENTER_HORIZONTAL | Gravity.TOP);
     }
 
     private class ClingWindowView extends FrameLayout {
@@ -231,13 +207,8 @@ public class ImmersiveModeConfirmation {
             float density = metrics.density;
 
             // create the confirmation cling
-            if (mStatusBarHidden) {
-                mClingLayout = (ViewGroup)
-                        View.inflate(getUiContext(), R.layout.immersive_mode_cling, null);
-            } else {
-                mClingLayout = (ViewGroup)
-                        View.inflate(getUiContext(), R.layout.immersive_mode_cling_bottom, null);
-            }
+            mClingLayout = (ViewGroup)
+                    View.inflate(getContext(), R.layout.immersive_mode_cling, null);
 
             final Button ok = (Button) mClingLayout.findViewById(R.id.ok);
             ok.setOnClickListener(new OnClickListener() {
@@ -251,7 +222,7 @@ public class ImmersiveModeConfirmation {
             if (ActivityManager.isHighEndGfx()) {
                 final View bubble = mClingLayout.findViewById(R.id.text);
                 bubble.setAlpha(0f);
-                bubble.setTranslationY(mStatusBarHidden ? -OFFSET_DP*density : OFFSET_DP*density);
+                bubble.setTranslationY(-OFFSET_DP*density);
                 bubble.animate()
                         .alpha(1f)
                         .translationY(0)
@@ -260,7 +231,7 @@ public class ImmersiveModeConfirmation {
                         .start();
 
                 ok.setAlpha(0f);
-                ok.setTranslationY(mStatusBarHidden ? -OFFSET_DP*density : OFFSET_DP*density);
+                ok.setTranslationY(-OFFSET_DP*density);
                 ok.animate().alpha(1f)
                         .translationY(0)
                         .setDuration(300)
@@ -292,16 +263,14 @@ public class ImmersiveModeConfirmation {
 
         @Override
         public boolean onTouchEvent(MotionEvent motion) {
-            Slog.v(TAG, "ClingWindowView.onTouchEvent");
             return true;
         }
     }
 
-    private void handleShow(String pkg) {
-        mPromptPackage = pkg;
-        if (DEBUG) Slog.d(TAG, "Showing immersive mode confirmation for " + pkg);
+    private void handleShow() {
+        if (DEBUG) Slog.d(TAG, "Showing immersive mode confirmation");
 
-        mClingWindow = new ClingWindowView(mContext, confirmAction(pkg));
+        mClingWindow = new ClingWindowView(mContext, mConfirm);
 
         // we will be hiding the nav bar, so layout as if it's already hidden
         mClingWindow.setSystemUiVisibility(
@@ -313,29 +282,27 @@ public class ImmersiveModeConfirmation {
         mWindowManager.addView(mClingWindow, lp);
     }
 
-    private Runnable confirmAction(final String pkg) {
-        return new Runnable() {
-            @Override
-            public void run() {
-                if (pkg != null && !mConfirmedPackages.contains(pkg)) {
-                    if (DEBUG) Slog.d(TAG, "Confirming immersive mode for " + pkg);
-                    mConfirmedPackages.add(pkg);
-                    saveSetting();
-                }
-                handleHide();
+    private final Runnable mConfirm = new Runnable() {
+        @Override
+        public void run() {
+            if (DEBUG) Slog.d(TAG, "mConfirm.run()");
+            if (!mConfirmed) {
+                mConfirmed = true;
+                saveSetting();
             }
-        };
-    }
+            handleHide();
+        }
+    };
 
     private final class H extends Handler {
-        private static final int SHOW = 0;
-        private static final int HIDE = 1;
+        private static final int SHOW = 1;
+        private static final int HIDE = 2;
 
         @Override
         public void handleMessage(Message msg) {
             switch(msg.what) {
                 case SHOW:
-                    handleShow((String)msg.obj);
+                    handleShow();
                     break;
                 case HIDE:
                     handleHide();

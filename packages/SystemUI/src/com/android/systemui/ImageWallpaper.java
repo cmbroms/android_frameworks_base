@@ -120,6 +120,7 @@ public class ImageWallpaper extends WallpaperService {
         boolean mVisible = true;
         boolean mRedrawNeeded;
         boolean mOffsetsChanged;
+        boolean mSurfaceChanged;
         int mLastXTranslation;
         int mLastYTranslation;
 
@@ -211,6 +212,7 @@ public class ImageWallpaper extends WallpaperService {
             if (mReceiver != null) {
                 unregisterReceiver(mReceiver);
             }
+            mBackground = null;
         }
 
         void updateSurfaceSize(SurfaceHolder surfaceHolder) {
@@ -300,7 +302,7 @@ public class ImageWallpaper extends WallpaperService {
             }
 
             super.onSurfaceChanged(holder, format, width, height);
-
+            mSurfaceChanged = true;
             drawFrame();
         }
 
@@ -342,9 +344,10 @@ public class ImageWallpaper extends WallpaperService {
             // Sometimes a wallpaper is not large enough to cover the screen in one dimension.
             // Call updateSurfaceSize -- it will only actually do the update if the dimensions
             // should change
-            if (newRotation != mLastRotation) {
+            if (newRotation != mLastRotation || mSurfaceChanged ) {
                 // Update surface size (if necessary)
                 updateSurfaceSize(getSurfaceHolder());
+                mSurfaceChanged = false;
             }
             SurfaceHolder sh = getSurfaceHolder();
             final Rect frame = sh.getSurfaceFrame();
@@ -536,7 +539,7 @@ public class ImageWallpaper extends WallpaperService {
 
             checkGlError();
 
-            if (w < 0 || h < 0) {
+            if (w > 0 || h > 0) {
                 glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
                 glClear(GL_COLOR_BUFFER_BIT);
             }

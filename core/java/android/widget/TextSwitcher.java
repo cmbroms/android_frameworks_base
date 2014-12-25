@@ -77,10 +77,8 @@ public class TextSwitcher extends ViewSwitcher {
      */
     public void setText(CharSequence text) {
         final TextView t = (TextView) getNextView();
-        if (t != null) {
-            t.setText(text);
-            showNext();
-        }
+        t.setText(text);
+        showNext();
     }
 
     /**

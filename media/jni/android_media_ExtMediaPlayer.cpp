@@ -49,6 +49,7 @@ bool JNIExtMediaPlayerListener::checkExtMedia(JNIEnv *env, jobject thiz)
   {
     //Clear the exception as QCMediaPlayer is optional
     env->ExceptionClear();
+    ALOGE("QCMediaPlayer could not be located....");
   }
   return nRet;
 }
@@ -104,12 +105,7 @@ JNIExtMediaPlayerListener::~JNIExtMediaPlayerListener()
 void JNIExtMediaPlayerListener::notify(int msg, int ext1, int ext2, const Parcel *obj)
 {
   JNIEnv *env = AndroidRuntime::getJNIEnv();
-
-  if (!env) {
-      return;
-  }
-
-  if (obj && obj->dataSize() > 0)
+  if (env && obj && obj->dataSize() > 0)
   {
     if (mParcel != NULL)
     {

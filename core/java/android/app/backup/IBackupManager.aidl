@@ -167,33 +167,16 @@ interface IBackupManager {
      *     are to be backed up.  The <code>allApps</code> parameter supersedes this.
      */
     void fullBackup(in ParcelFileDescriptor fd, boolean includeApks, boolean includeObbs,
-            boolean includeShared, boolean allApps, boolean allIncludesSystem,
-            in String[] packageNames);
+            boolean includeShared, boolean doWidgets, boolean allApps, boolean allIncludesSystem,
+            boolean doCompress, in String[] packageNames);
 
     /**
-     * Write a backup of the given package to the supplied file descriptor.
-     * The fd may be a socket or other non-seekable destination.
+     * Perform a full-dataset backup of the given applications via the currently active
+     * transport.
      *
-     * <p>Use this method instead of fullBackup() when non-interactive operations are needed.
-     *
-     * <p>This method is <i>synchronous</i> -- it does not return until the backup has
-     * completed.
-     *
-     * <p>Callers must hold the android.permission.BACKUP permission to use this method.
-     *
-     * @param fd The file descriptor to which a 'tar' file stream is to be written.
-     * @param domainTokens - The specific files paths (expressed as domain tokens) that should
-     *        be backedup.
-     * @param excludeFilesRegex - The files that should be excluded, specified as a regex.
-     * @param packageName - The name of the package.
-     * @param shouldKillAfterBackup - Should the process be killed once the backup is done.
-     * @param ignoreEncryptionPasswordCheck - Should encryption password check be ignored
-     * @param observer - The Backup Observer which is notified of the start / finish / error state
-     *        of the backup.
+     * @param packageNames The package names of the apps whose data are to be backed up.
      */
-    void fullBackupNoninteractive(in ParcelFileDescriptor fd, in String[] domainTokens,
-            in String excludeFilesRegex, in String packageName, boolean shouldKillAfterBackup,
-            boolean ignoreEncryptionPasswordCheck, IFullBackupRestoreObserver observer);
+    void fullTransportBackup(in String[] packageNames);
 
     /**
      * Restore device content from the data stream passed through the given socket.  The
@@ -202,17 +185,6 @@ interface IBackupManager {
      * <p>Callers must hold the android.permission.BACKUP permission to use this method.
      */
     void fullRestore(in ParcelFileDescriptor fd);
-
-    /**
-     * Restore device content from the data stream passed through the given socket.  The
-     * data stream must be in the format emitted by fullBackup().
-     *
-     * <p>Use this method instead of fullRestore() when non-interactive operations are needed.
-     *
-     * <p>Callers must hold the android.permission.BACKUP permission to use this method.
-     */
-    void fullRestoreNoninteractive(in ParcelFileDescriptor fd,
-            boolean ignoreEncryptionPasswordCheck, IFullBackupRestoreObserver observer);
 
     /**
      * Confirm that the requested full backup/restore operation can proceed.  The system will
@@ -276,6 +248,18 @@ interface IBackupManager {
      *   verbatim by the Settings UI as the summary text of the "configure..." item.
      */
     String getDestinationString(String transport);
+
+    /**
+     * Get the manage-data UI intent, if any, from the given transport.  Callers must
+     * hold the android.permission.BACKUP permission in order to use this method.
+     */
+    Intent getDataManagementIntent(String transport);
+
+    /**
+     * Get the manage-data menu label, if any, from the given transport.  Callers must
+     * hold the android.permission.BACKUP permission in order to use this method.
+     */
+    String getDataManagementLabel(String transport);
 
     /**
      * Begin a restore session.  Either or both of packageName and transportID

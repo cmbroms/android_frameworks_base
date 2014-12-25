@@ -1,6 +1,5 @@
 /*
- * Copyright (C) 2013 The Linux Foundation. All rights reserved
- * Not a Contribution.
+ * Copyright (C) 2014 The Android Open Source Project
  * Copyright (c) 2008-2009, Motorola, Inc.
  *
  * All rights reserved.
@@ -76,8 +75,7 @@ public final class ObexHelper {
      * Temporary workaround to be able to push files to Windows 7.
      * TODO: Should be removed as soon as Microsoft updates their driver.
      */
-    public static final int MAX_CLIENT_PACKET_SIZE = 0xEC88;
-    public static final int A2DP_OBEX_MAX_CLIENT_PACKET_SIZE = 0x2000;
+    public static final int MAX_CLIENT_PACKET_SIZE = 0xFC00;
 
     public static final int OBEX_OPCODE_CONNECT = 0x80;
 

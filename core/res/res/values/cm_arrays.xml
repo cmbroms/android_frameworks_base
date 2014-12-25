@@ -30,7 +30,7 @@
         <item>soft_reboot</item>
         <item>recovery</item>
         <item>bootloader</item>
-    </string-array>
+     </string-array>
 
     <!-- Do not translate. Defines the mapping of notification package names
          from the actual triggering package to the user selectable package.
@@ -38,19 +38,6 @@
          Format: [triggering package]|[user package] -->
     <string-array name="notification_light_package_mapping" translatable="false">
         <item>com.google.android.gsf|com.google.android.talk</item>
-    </string-array>
-
-    <!-- Performance profiles -->
-    <string-array name="perf_profile_entries" translatable="false">
-        <item>@string/perf_profile_pwrsv</item>
-        <item>@string/perf_profile_bal</item>
-        <item>@string/perf_profile_perf</item>
-    </string-array>
-
-    <string-array name="perf_profile_values" translatable="false">
-        <item>0</item>
-        <item>1</item>
-        <item>2</item>
     </string-array>
 
     <!-- Do not translate. App ops request strings -->
@@ -98,15 +85,24 @@
         <item>@string/app_ops_keep_device_awake</item>
         <item>@string/app_ops_access_location</item>
         <item>@string/app_ops_access_location</item>
+        <item>@string/app_ops_get_usage_stats</item>
+        <item>@string/app_ops_mute_unmute_microphone</item>
+        <item>@string/app_ops_toast_window</item>
+        <item>@string/app_ops_project_media</item>
+        <item>@string/app_ops_activate_vpn</item>
         <item>@string/app_ops_toggle_wifi</item>
         <item>@string/app_ops_toggle_bluetooth</item>
-        <item>@string/app_ops_toggle_mobile_data</item>
-        <item>@string/app_ops_alarm_wakeup</item>
         <item>@string/app_ops_send_mms</item>
         <item>@string/app_ops_read_mms</item>
         <item>@string/app_ops_write_mms</item>
-        <item>@string/app_ops_start_at_bootup</item>
+        <item>@string/app_ops_auto_start</item>
         <item>@string/app_ops_toggle_nfc</item>
+        <item>@string/app_ops_delete_sms</item>
+        <item>@string/app_ops_delete_mms</item>
+        <item>@string/app_ops_delete_contacts</item>
+        <item>@string/app_ops_delete_call_log</item>
+        <item>@string/app_ops_toggle_mobile_data</item>
+        <item>@string/app_ops_alarm_wakeup</item>
     </string-array>
 
 </resources>

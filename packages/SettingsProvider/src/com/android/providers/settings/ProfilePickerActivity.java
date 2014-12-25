@@ -22,9 +22,6 @@ import android.app.ProfileManager;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
-import android.content.pm.PackageManager.NameNotFoundException;
-import android.content.res.Resources;
-import android.content.res.Resources.Theme;
 import android.os.Bundle;
 import android.util.Log;
 import android.widget.ArrayAdapter;
@@ -84,21 +81,6 @@ public final class ProfilePickerActivity extends AlertActivity implements
         super.onCreate(savedInstanceState);
 
         Intent intent = getIntent();
-
-        // Set custom theme
-        int themeExtra = intent.getIntExtra(ProfileManager.EXTRA_PROFILE_DIALOG_THEME, 0);
-        if (themeExtra != 0) {
-            try {
-                Resources resources = getPackageManager().getResourcesForApplication(
-                        getCallingPackage());
-                Theme theme = resources.newTheme();
-                theme.applyStyle(themeExtra, true);
-                getTheme().setTo(theme);
-
-            } catch (NameNotFoundException e) {
-                // Resource not available. Fall-through default theme
-            }
-        }
 
         if (savedInstanceState != null) {
             mClickedPos = savedInstanceState.getInt(SAVE_CLICKED_POS, -1);

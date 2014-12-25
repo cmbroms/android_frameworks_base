@@ -22,6 +22,7 @@ import android.os.RemoteException;
 import android.util.Slog;
 import android.view.MotionEvent;
 
+import com.android.internal.policy.IKeyguardServiceConstants;
 import com.android.internal.policy.IKeyguardShowCallback;
 import com.android.internal.policy.IKeyguardExitCallback;
 import com.android.internal.policy.IKeyguardService;
@@ -57,9 +58,9 @@ public class KeyguardServiceWrapper implements IKeyguardService {
         return false; // TODO cache state
     }
 
-    public boolean isShowingAndNotHidden() {
+    public boolean isShowingAndNotOccluded() {
         try {
-            return mService.isShowingAndNotHidden();
+            return mService.isShowingAndNotOccluded();
         } catch (RemoteException e) {
             Slog.w(TAG , "Remote Exception", e);
         }
@@ -100,11 +101,12 @@ public class KeyguardServiceWrapper implements IKeyguardService {
         }
     }
 
-    public void setHidden(boolean isHidden) {
+    public int setOccluded(boolean isOccluded) {
         try {
-            mService.setHidden(isHidden);
+            return mService.setOccluded(isOccluded);
         } catch (RemoteException e) {
             Slog.w(TAG , "Remote Exception", e);
+            return IKeyguardServiceConstants.KEYGUARD_SERVICE_SET_OCCLUDED_RESULT_NONE;
         }
     }
 
@@ -188,24 +190,31 @@ public class KeyguardServiceWrapper implements IKeyguardService {
         }
     }
 
+    public void startKeyguardExitAnimation(long startTime, long fadeoutDuration) {
+        try {
+            mService.startKeyguardExitAnimation(startTime, fadeoutDuration);
+        } catch (RemoteException e) {
+            Slog.w(TAG , "Remote Exception", e);
+        }
+    }
+
+    public void onActivityDrawn() {
+        try {
+            mService.onActivityDrawn();
+        } catch (RemoteException e) {
+            Slog.w(TAG , "Remote Exception", e);
+        }
+    }
+
     public void showAssistant() {
         // Not used by PhoneWindowManager
     }
 
-    public void dispatchCameraEvent(MotionEvent event) {
+    public void dispatch(MotionEvent event) {
         // Not used by PhoneWindowManager.  See code in {@link NavigationBarView}
     }
-
-    public void dispatchApplicationWidgetEvent(MotionEvent event) {
-        // Not used by PhoneWindowManager.  See code in {@link NavigationBarView}
-    }
-
 
     public void launchCamera() {
-        // Not used by PhoneWindowManager.  See code in {@link NavigationBarView}
-    }
-
-    public void launchApplicationWidget() {
         // Not used by PhoneWindowManager.  See code in {@link NavigationBarView}
     }
 

@@ -84,8 +84,13 @@ public class QuickContactBadge extends ImageView implements OnClickListener {
         this(context, attrs, 0);
     }
 
-    public QuickContactBadge(Context context, AttributeSet attrs, int defStyle) {
-        super(context, attrs, defStyle);
+    public QuickContactBadge(Context context, AttributeSet attrs, int defStyleAttr) {
+        this(context, attrs, defStyleAttr, 0);
+    }
+
+    public QuickContactBadge(
+            Context context, AttributeSet attrs, int defStyleAttr, int defStyleRes) {
+        super(context, attrs, defStyleAttr, defStyleRes);
 
         TypedArray styledAttributes = mContext.obtainStyledAttributes(R.styleable.Theme);
         mOverlay = styledAttributes.getDrawable(
@@ -104,6 +109,15 @@ public class QuickContactBadge extends ImageView implements OnClickListener {
         if (mOverlay != null && mOverlay.isStateful()) {
             mOverlay.setState(getDrawableState());
             invalidate();
+        }
+    }
+
+    @Override
+    public void drawableHotspotChanged(float x, float y) {
+        super.drawableHotspotChanged(x, y);
+
+        if (mOverlay != null) {
+            mOverlay.setHotspot(x, y);
         }
     }
 
@@ -150,7 +164,7 @@ public class QuickContactBadge extends ImageView implements OnClickListener {
      */
     public void setImageToDefault() {
         if (mDefaultAvatar == null) {
-            mDefaultAvatar = getResources().getDrawable(R.drawable.ic_contact_picture);
+            mDefaultAvatar = mContext.getDrawable(R.drawable.ic_contact_picture);
         }
         setImageDrawable(mDefaultAvatar);
     }
@@ -251,6 +265,16 @@ public class QuickContactBadge extends ImageView implements OnClickListener {
         }
     }
 
+    /**
+     * Assigns the drawable that is to be drawn on top of the assigned contact photo.
+     *
+     * @param overlay Drawable to be drawn over the assigned contact photo. Must have a non-zero
+     *         instrinsic width and height.
+     */
+    public void setOverlay(Drawable overlay) {
+        mOverlay = overlay;
+    }
+
     private void onContactUriChanged() {
         setEnabled(isAssigned());
     }
@@ -316,11 +340,8 @@ public class QuickContactBadge extends ImageView implements OnClickListener {
             try {
                 switch(token) {
                     case TOKEN_PHONE_LOOKUP_AND_TRIGGER:
-                        String contactExtra = extras.getString(EXTRA_URI_CONTENT);
-                        if (contactExtra != null) {
-                            trigger = true;
-                            createUri = Uri.fromParts("tel", contactExtra, null);
-                        }
+                        trigger = true;
+                        createUri = Uri.fromParts("tel", extras.getString(EXTRA_URI_CONTENT), null);
 
                         //$FALL-THROUGH$
                     case TOKEN_PHONE_LOOKUP: {

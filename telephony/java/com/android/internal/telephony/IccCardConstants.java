@@ -29,7 +29,7 @@ public class IccCardConstants {
     /* ABSENT means ICC is missing */
     public static final String INTENT_VALUE_ICC_ABSENT = "ABSENT";
     /* CARD_IO_ERROR means for three consecutive times there was SIM IO error */
-    public static final String INTENT_VALUE_ICC_CARD_IO_ERROR = "CARD_IO_ERROR";
+    static public final String INTENT_VALUE_ICC_CARD_IO_ERROR = "CARD_IO_ERROR";
     /* LOCKED means ICC is locked by pin or by network */
     public static final String INTENT_VALUE_ICC_LOCKED = "LOCKED";
     /* READY means ICC is ready to access */
@@ -66,8 +66,7 @@ public class IccCardConstants {
         READY,
         NOT_READY,
         PERM_DISABLED,
-        CARD_IO_ERROR,
-        DETECTED;
+        CARD_IO_ERROR;
 
         public boolean isPinLocked() {
             return ((this == PIN_REQUIRED) || (this == PUK_REQUIRED));
@@ -76,8 +75,7 @@ public class IccCardConstants {
         public boolean iccCardExist() {
             return ((this == PIN_REQUIRED) || (this == PUK_REQUIRED)
                     || (this == PERSO_LOCKED) || (this == READY)
-                    || (this == PERM_DISABLED) || (this == CARD_IO_ERROR)
-                    || (this == DETECTED));
+                    || (this == PERM_DISABLED) || (this == CARD_IO_ERROR));
         }
     }
 }

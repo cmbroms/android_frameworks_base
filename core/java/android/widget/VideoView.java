@@ -19,10 +19,10 @@ package android.widget;
 import android.app.AlertDialog;
 import android.content.Context;
 import android.content.DialogInterface;
-import android.content.Intent;
 import android.content.res.Resources;
 import android.graphics.Canvas;
 import android.media.AudioManager;
+import android.media.ClosedCaptionRenderer;
 import android.media.MediaFormat;
 import android.media.MediaPlayer;
 import android.media.MediaPlayer.OnCompletionListener;
@@ -31,6 +31,7 @@ import android.media.MediaPlayer.OnInfoListener;
 import android.media.Metadata;
 import android.media.SubtitleController;
 import android.media.SubtitleTrack.RenderingWidget;
+import android.media.TtmlRenderer;
 import android.media.WebVttRenderer;
 import android.net.Uri;
 import android.os.Looper;
@@ -128,8 +129,12 @@ public class VideoView extends SurfaceView
         initVideoView();
     }
 
-    public VideoView(Context context, AttributeSet attrs, int defStyle) {
-        super(context, attrs, defStyle);
+    public VideoView(Context context, AttributeSet attrs, int defStyleAttr) {
+        this(context, attrs, defStyleAttr, 0);
+    }
+
+    public VideoView(Context context, AttributeSet attrs, int defStyleAttr, int defStyleRes) {
+        super(context, attrs, defStyleAttr, defStyleRes);
         initVideoView();
     }
 
@@ -226,16 +231,33 @@ public class VideoView extends SurfaceView
         mTargetState  = STATE_IDLE;
     }
 
+    /**
+     * Sets video path.
+     *
+     * @param path the path of the video.
+     */
     public void setVideoPath(String path) {
         setVideoURI(Uri.parse(path));
     }
 
+    /**
+     * Sets video URI.
+     *
+     * @param uri the URI of the video.
+     */
     public void setVideoURI(Uri uri) {
         setVideoURI(uri, null);
     }
 
     /**
-     * @hide
+     * Sets video URI using specific headers.
+     *
+     * @param uri     the URI of the video.
+     * @param headers the headers for the URI request.
+     *                Note that the cross domain redirection is allowed by default, but that can be
+     *                changed with key/value pairs through the headers parameter with
+     *                "android-allow-cross-domain-redirect" as the key and "0" or "1" as the value
+     *                to disallow or allow cross domain redirection.
      */
     public void setVideoURI(Uri uri, Map<String, String> headers) {
         mUri = uri;
@@ -285,11 +307,13 @@ public class VideoView extends SurfaceView
 
     public void stopPlayback() {
         if (mMediaPlayer != null) {
+            Log.i(TAG, "Playback Stop begin");
             mMediaPlayer.stop();
             mMediaPlayer.release();
             mMediaPlayer = null;
             mCurrentState = STATE_IDLE;
             mTargetState  = STATE_IDLE;
+            Log.i(TAG, "Playback Stop end");
         }
     }
 
@@ -298,11 +322,10 @@ public class VideoView extends SurfaceView
             // not ready for playback just yet, will try again later
             return;
         }
-        // Tell the music playback service to pause
-        // TODO: these constants need to be published somewhere in the framework.
-        Intent i = new Intent("com.android.music.musicservicecommand");
-        i.putExtra("command", "pause");
-        mContext.sendBroadcast(i);
+
+        Log.i(TAG, "Open Video");
+        AudioManager am = (AudioManager) mContext.getSystemService(Context.AUDIO_SERVICE);
+        am.requestAudioFocus(null, AudioManager.STREAM_MUSIC, AudioManager.AUDIOFOCUS_GAIN);
 
         // we shouldn't clear the target state, because somebody might have
         // called start() previously
@@ -315,6 +338,8 @@ public class VideoView extends SurfaceView
             final SubtitleController controller = new SubtitleController(
                     context, mMediaPlayer.getMediaTimeProvider(), mMediaPlayer);
             controller.registerRenderer(new WebVttRenderer(context));
+            controller.registerRenderer(new TtmlRenderer(context));
+            controller.registerRenderer(new ClosedCaptionRenderer(context));
             mMediaPlayer.setSubtitleAnchor(controller, this);
 
             if (mAudioSession != 0) {
@@ -329,6 +354,7 @@ public class VideoView extends SurfaceView
             mMediaPlayer.setOnInfoListener(mInfoListener);
             mMediaPlayer.setOnBufferingUpdateListener(mBufferingUpdateListener);
             mCurrentBufferPercentage = 0;
+            Log.i(TAG, "SetDataSource");
             mMediaPlayer.setDataSource(mContext, mUri, mHeaders);
             mMediaPlayer.setDisplay(mSurfaceHolder);
             mMediaPlayer.setAudioStreamType(AudioManager.STREAM_MUSIC);
@@ -385,10 +411,11 @@ public class VideoView extends SurfaceView
 
     private boolean isHTTPStreaming(Uri mUri) {
         if (mUri != null) {
-            String scheme = mUri.toString();
-            if (scheme.startsWith("http://") || scheme.startsWith("https://")) {
-                if (scheme.endsWith(".m3u8") || scheme.endsWith(".m3u")
-                    || scheme.contains("m3u8") || scheme.endsWith(".mpd")) {
+            String scheme = mUri.getScheme();
+            if ((scheme != null) && (scheme.equals("http") || scheme.equals("https"))) {
+                String path = mUri.getPath();
+                if (path == null || path.endsWith(".m3u8") || path.endsWith(".m3u")
+                        || path.endsWith(".mpd")) {
                     // HLS or DASH streaming source
                     return false;
                 }
@@ -649,7 +676,7 @@ public class VideoView extends SurfaceView
             if (mMediaController != null)
                 mMediaController.hide();
             if (isHTTPStreaming(mUri) && mCurrentState == STATE_SUSPENDED) {
-                // don't call release() while run suspend operation for http streaming source
+                // don't call release() while suspending
                 return;
             }
             release(true);
@@ -741,8 +768,10 @@ public class VideoView extends SurfaceView
     @Override
     public void start() {
         if (isInPlaybackState()) {
+            Log.i(TAG, "Playback Start begin");
             mMediaPlayer.start();
             mCurrentState = STATE_PLAYING;
+            Log.i(TAG, "Playback Start end");
         }
         mTargetState = STATE_PLAYING;
     }
@@ -759,8 +788,10 @@ public class VideoView extends SurfaceView
     }
 
     public void suspend() {
+        Log.i(TAG, "Playback Suspend begin");
         // HTTP streaming will call MediaPlayer::suspend() for suspend operation, others will call release()
-        if (isHTTPStreaming(mUri) && mCurrentState > STATE_PREPARING && mMediaPlayer != null) {
+        if (isHTTPStreaming(mUri) && mCurrentState > STATE_PREPARING &&
+                mCurrentState < STATE_PLAYBACK_COMPLETED && mMediaPlayer != null) {
             if (mMediaPlayer.suspend()) {
                 mTargetState = mCurrentState;
                 mCurrentState = STATE_SUSPENDED;
@@ -768,6 +799,7 @@ public class VideoView extends SurfaceView
             }
         }
         release(false);
+        Log.i(TAG, "Playback Suspend end");
     }
 
     public void resume() {

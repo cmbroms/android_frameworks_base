@@ -11,8 +11,8 @@ namespace {
 \n\
 SYNOPSIS \n\
       idmap --help \n\
-      idmap --fd target overlay fd redirections \n\
-      idmap --path target overlay idmap redirections \n\
+      idmap --fd target overlay fd \n\
+      idmap --path target overlay idmap \n\
       idmap --scan dir-to-scan target-to-look-for target dir-to-hold-idmaps \n\
       idmap --inspect idmap \n\
 \n\
@@ -66,26 +66,32 @@ EXAMPLES \n\
       Display an idmap file: \n\
 \n\
       $ adb shell idmap --inspect /data/resource-cache/vendor@overlay@overlay.apk@idmap \n\
-      SECTION      ENTRY        VALUE      OFFSET    COMMENT \n\
-      IDMAP HEADER magic        0x706d6469 0x0 \n\
-                   base crc     0x484aa77f 0x1 \n\
-                   overlay crc  0x03c66fa5 0x2 \n\
-                   base path    .......... 0x03-0x42 /system/app/target.apk \n\
-                   overlay path .......... 0x43-0x82 /vendor/overlay/overlay.apk \n\
-      DATA HEADER  types count  0x00000003 0x83 \n\
-                   padding      0x00000000 0x84 \n\
-                   type offset  0x00000004 0x85      absolute offset 0x87, xml \n\
-                   type offset  0x00000007 0x86      absolute offset 0x8a, string \n\
-      DATA BLOCK   entry count  0x00000001 0x87 \n\
-                   entry offset 0x00000000 0x88 \n\
-                   entry        0x7f020000 0x89      xml/integer \n\
-      DATA BLOCK   entry count  0x00000002 0x8a \n\
-                   entry offset 0x00000000 0x8b \n\
-                   entry        0x7f030000 0x8c      string/str \n\
-                   entry        0x7f030001 0x8d      string/str2 \n\
+      SECTION      ENTRY        VALUE      COMMENT \n\
+      IDMAP HEADER magic        0x706d6469 \n\
+                   base crc     0xb65a383f \n\
+                   overlay crc  0x7b9675e8 \n\
+                   base path    .......... /path/to/target.apk \n\
+                   overlay path .......... /path/to/overlay.apk \n\
+      DATA HEADER  target pkg   0x0000007f \n\
+                   types count  0x00000003 \n\
+      DATA BLOCK   target type  0x00000002 \n\
+                   overlay type 0x00000002 \n\
+                   entry count  0x00000001 \n\
+                   entry offset 0x00000000 \n\
+                   entry        0x00000000 drawable/drawable \n\
+      DATA BLOCK   target type  0x00000003 \n\
+                   overlay type 0x00000003 \n\
+                   entry count  0x00000001 \n\
+                   entry offset 0x00000000 \n\
+                   entry        0x00000000 xml/integer \n\
+      DATA BLOCK   target type  0x00000004 \n\
+                   overlay type 0x00000004 \n\
+                   entry count  0x00000001 \n\
+                   entry offset 0x00000000 \n\
+                   entry        0x00000000 raw/lorem_ipsum \n\
 \n\
       In this example, the overlay package provides three alternative resource values:\n\
-      xml/integer, string/str and string/str2.\n\
+      drawable/drawable, xml/integer, and raw/lorem_ipsum \n\
 \n\
 NOTES \n\
       This tool and its expected invocation from installd is modelled on dexopt.";
@@ -114,8 +120,7 @@ NOTES \n\
     }
 
     int maybe_create_fd(const char *target_apk_path, const char *overlay_apk_path,
-            const char *idmap_str, const char *target_hash_str, const char *overlay_hash_str,
-            const char *redirections)
+            const char *idmap_str)
     {
         // anyone (not just root or system) may do --fd -- the file has
         // already been opened by someone else on our behalf
@@ -136,16 +141,12 @@ NOTES \n\
             ALOGD("error: failed to read apk %s: %s\n", overlay_apk_path, strerror(errno));
             return -1;
         }
-        int target_hash = strtol(target_hash_str, 0, 10);
-        int overlay_hash = strtol(overlay_hash_str, 0, 10);
 
-        return idmap_create_fd(target_apk_path, overlay_apk_path, target_hash, overlay_hash,
-                redirections, idmap_fd);
+        return idmap_create_fd(target_apk_path, overlay_apk_path, idmap_fd);
     }
 
     int maybe_create_path(const char *target_apk_path, const char *overlay_apk_path,
-            const char *idmap_path, const char *target_hash_str, const char *overlay_hash_str,
-            const char *redirections)
+            const char *idmap_path)
     {
         if (!verify_root_or_system()) {
             fprintf(stderr, "error: permission denied: not user root or user system\n");
@@ -162,10 +163,7 @@ NOTES \n\
             return -1;
         }
 
-        int target_hash = strtol(target_hash_str, 0, 10);
-        int overlay_hash = strtol(overlay_hash_str, 0, 10);
-        return idmap_create_path(target_apk_path, overlay_apk_path, target_hash, overlay_hash,
-                redirections, idmap_path);
+        return idmap_create_path(target_apk_path, overlay_apk_path, idmap_path);
     }
 
     int maybe_scan(const char *overlay_dir, const char *target_package_name,
@@ -224,12 +222,12 @@ int main(int argc, char **argv)
         return 0;
     }
 
-    if (argc == 8 && !strcmp(argv[1], "--fd")) {
-        return maybe_create_fd(argv[2], argv[3], argv[4], argv[5], argv[6], argv[7]);
+    if (argc == 5 && !strcmp(argv[1], "--fd")) {
+        return maybe_create_fd(argv[2], argv[3], argv[4]);
     }
 
-    if (argc == 8 && !strcmp(argv[1], "--path")) {
-        return maybe_create_path(argv[2], argv[3], argv[4], argv[5], argv[6], argv[7]);
+    if (argc == 5 && !strcmp(argv[1], "--path")) {
+        return maybe_create_path(argv[2], argv[3], argv[4]);
     }
 
     if (argc == 6 && !strcmp(argv[1], "--scan")) {
