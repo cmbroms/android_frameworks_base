@@ -147,6 +147,9 @@ LOCAL_SRC_FILES += \
 	core/java/android/content/pm/IPackageManager.aidl \
 	core/java/android/content/pm/IPackageMoveObserver.aidl \
 	core/java/android/content/pm/IPackageStatsObserver.aidl \
+        core/java/android/content/res/IThemeChangeListener.aidl \
+        core/java/android/content/res/IThemeProcessingListener.aidl \
+        core/java/android/content/res/IThemeService.aidl \
 	core/java/android/database/IContentObserver.aidl \
 	core/java/android/hardware/ICameraService.aidl \
 	core/java/android/hardware/ICameraServiceListener.aidl \
@@ -427,27 +430,6 @@ framework_module := $(LOCAL_INSTALLED_MODULE)
 framework_res_R_stamp := \
 	$(call intermediates-dir-for,APPS,framework-res,,COMMON)/src/R.stamp
 $(full_classes_compiled_jar): $(framework_res_R_stamp)
-
-# Build part 2 of the framework library.
-# ============================================================
-include $(CLEAR_VARS)
-
-LOCAL_MODULE := framework2
-LOCAL_MODULE_CLASS := JAVA_LIBRARIES
-LOCAL_NO_STANDARD_LIBRARIES := true
-LOCAL_STATIC_JAVA_LIBRARIES := framework-base
-LOCAL_DX_FLAGS := --core-library
-
-
-# List of packages to include along with their descendants.
-LOCAL_JAR_PACKAGES := \
-    android.hardware \
-    com \
-    javax \
-    org
-
-include $(BUILD_JAVA_LIBRARY)
-framework2_module := $(LOCAL_INSTALLED_MODULE)
 
 $(framework_module): | $(dir $(framework_module))framework-res.apk
 

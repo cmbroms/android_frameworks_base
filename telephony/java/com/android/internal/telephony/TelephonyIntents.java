@@ -274,6 +274,15 @@ public class TelephonyIntents {
     public static final String ACTION_CARRIER_SETUP = "android.intent.action.ACTION_CARRIER_SETUP";
 
     /**
+     * <p>Broadcast Action: Indicates that the action is forbidden by network.
+     * <p class="note">
+     * This is for the OEM applications to understand about possible provisioning issues.
+     * Used in OMA-DM applications.
+     */
+    public static final String ACTION_FORBIDDEN_NO_SERVICE_AUTHORIZATION
+            = "android.intent.action.ACTION_FORBIDDEN_NO_SERVICE_AUTHORIZATION";
+
+    /**
      * Broadcast Action: A "secret code" has been entered in the dialer. Secret codes are
      * of the form {@code *#*#<code>#*#*}. The intent will have the data URI:
      *
@@ -414,4 +423,21 @@ public class TelephonyIntents {
      */
     public static final String ACTION_DEFAULT_SMS_SUBSCRIPTION_CHANGED
             = "android.intent.action.ACTION_DEFAULT_SMS_SUBSCRIPTION_CHANGED";
+
+
+    /**
+     * Broadcast Action: The subscription activation/deactivation request result.
+     *  This has the following extra values:</p>
+     * <ul>
+     *   <li><em>operationResult</em> - A int, result of subscription
+     *   activation/deactivation request.</li>
+     *   <li><em>NewSubState</em> - A int, new sub state(activate/deactivate) clients
+     *   trying to set for the current subscription.</li>
+     * </ul>
+     */
+    public static final String ACTION_SUBSCRIPTION_SET_UICC_RESULT
+            = "org.codeaurora.intent.action.ACTION_SUBSCRIPTION_SET_UICC_RESULT";
+
+    public static final String EXTRA_RESULT  = "operationResult";
+    public static final String EXTRA_NEW_SUB_STATE = "newSubState";
 }

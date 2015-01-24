@@ -62,10 +62,12 @@
 #define OEM_BOOTANIMATION_FILE "/oem/media/bootanimation.zip"
 #define SYSTEM_BOOTANIMATION_FILE "/system/media/bootanimation.zip"
 #define SYSTEM_ENCRYPTED_BOOTANIMATION_FILE "/system/media/bootanimation-encrypted.zip"
+#define THEME_BOOTANIMATION_FILE "/data/system/theme/bootanimation.zip"
 
 #define OEM_SHUTDOWN_ANIMATION_FILE "/oem/media/shutdownanimation.zip"
 #define SYSTEM_SHUTDOWN_ANIMATION_FILE "/system/media/shutdownanimation.zip"
 #define SYSTEM_ENCRYPTED_SHUTDOWN_ANIMATION_FILE "/system/media/shutdownanimation-encrypted.zip"
+#define THEME_SHUTDOWN_ANIMATION_FILE "/data/system/theme/shutdownanimation.zip"
 
 #define OEM_BOOT_MUSIC_FILE "/oem/media/boot.wav"
 #define SYSTEM_BOOT_MUSIC_FILE "/system/media/boot.wav"
@@ -392,6 +394,9 @@ status_t BootAnimation::readyToRun() {
             ((access(getAnimationFileName(IMG_DATA), R_OK) == 0) &&
             ((zipFile = ZipFileRO::open(getAnimationFileName(IMG_DATA))) != NULL)) ||
 
+            ((access(getAnimationFileName(IMG_THEME), R_OK) == 0) &&
+            ((zipFile = ZipFileRO::open(getAnimationFileName(IMG_THEME))) != NULL)) ||
+
             ((access(getAnimationFileName(IMG_SYS), R_OK) == 0) &&
             ((zipFile = ZipFileRO::open(getAnimationFileName(IMG_SYS))) != NULL))) {
         mZip = zipFile;
@@ -652,6 +657,7 @@ bool BootAnimation::movie()
 
     mZip->endIteration(cookie);
 
+#ifndef CONTINUOUS_SPLASH
     // clear screen
     glShadeModel(GL_FLAT);
     glDisable(GL_DITHER);
@@ -661,6 +667,7 @@ bool BootAnimation::movie()
     glClear(GL_COLOR_BUFFER_BIT);
 
     eglSwapBuffers(mDisplay, mSurface);
+#endif
 
     glBindTexture(GL_TEXTURE_2D, 0);
     glEnable(GL_TEXTURE_2D);
@@ -822,12 +829,14 @@ bool BootAnimation::movie()
 
 char *BootAnimation::getAnimationFileName(ImageID image)
 {
-    char *fileName[2][3] = { { OEM_BOOTANIMATION_FILE,
+    char *fileName[2][4] = { { OEM_BOOTANIMATION_FILE,
             SYSTEM_BOOTANIMATION_FILE,
-            SYSTEM_ENCRYPTED_BOOTANIMATION_FILE }, {
+            SYSTEM_ENCRYPTED_BOOTANIMATION_FILE,
+            THEME_BOOTANIMATION_FILE }, {
             OEM_SHUTDOWN_ANIMATION_FILE,
             SYSTEM_SHUTDOWN_ANIMATION_FILE,
-            SYSTEM_ENCRYPTED_SHUTDOWN_ANIMATION_FILE} };
+            SYSTEM_ENCRYPTED_SHUTDOWN_ANIMATION_FILE,
+            THEME_SHUTDOWN_ANIMATION_FILE } };
     int state;
 
     state = checkBootState() ? 0 : 1;
